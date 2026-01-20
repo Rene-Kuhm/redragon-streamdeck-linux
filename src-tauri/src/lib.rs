@@ -336,9 +336,44 @@ fn set_brightness_level(state: State<AppState>, brightness: u8) -> Result<(), St
     drop(config);
     state.save_config();
 
-    if let Some(handle) = find_device() {
-        set_device_brightness(&handle, brightness)?;
+    // Try to set brightness on device
+    match find_device() {
+        Some(handle) => {
+            if let Err(e) = set_device_brightness(&handle, brightness) {
+                eprintln!("Warning: Could not set brightness: {}", e);
+            }
+        }
+        None => {
+            eprintln!("Warning: Device not found for brightness change");
+        }
     }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_page_buttons(state: State<AppState>, page_index: usize) -> Result<(), String> {
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+
+    if page_index >= config.pages.len() {
+        return Err("Invalid page index".to_string());
+    }
+
+    // Reset all buttons on the page to default
+    for i in 1..=15 {
+        config.pages[page_index].buttons.insert(
+            i.to_string(),
+            ButtonConfig {
+                label: String::new(),
+                command: String::new(),
+                color: "#1a1a2e".to_string(),
+                icon: String::new(),
+            },
+        );
+    }
+
+    drop(config);
+    state.save_config();
 
     Ok(())
 }
@@ -411,6 +446,114 @@ fn check_udev_rules() -> bool {
     std::path::Path::new("/etc/udev/rules.d/99-redragon.rules").exists()
 }
 
+#[tauri::command]
+fn save_icon(state: State<AppState>, source_path: String, icon_name: String) -> Result<String, String> {
+    let source = PathBuf::from(&source_path);
+    if !source.exists() {
+        return Err("Source file does not exist".to_string());
+    }
+
+    // Create icons directory if it doesn't exist
+    fs::create_dir_all(&state.icons_path).ok();
+
+    // Generate unique icon name if needed
+    let final_name = if icon_name.is_empty() {
+        format!("custom_{}.png", chrono_lite())
+    } else {
+        icon_name
+    };
+
+    let dest = state.icons_path.join(&final_name);
+    fs::copy(&source, &dest).map_err(|e| format!("Failed to copy icon: {}", e))?;
+
+    Ok(final_name)
+}
+
+fn chrono_lite() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+fn reset_config(state: State<AppState>) -> Result<(), String> {
+    // Reset to default config
+    let default_config = AppState::default_config();
+
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    *config = default_config;
+    drop(config);
+
+    state.save_config();
+
+    // Clear icons folder
+    if state.icons_path.exists() {
+        fs::remove_dir_all(&state.icons_path).ok();
+        fs::create_dir_all(&state.icons_path).ok();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn list_icons(state: State<AppState>) -> Vec<String> {
+    let mut icons = Vec::new();
+    if let Ok(entries) = fs::read_dir(&state.icons_path) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg") {
+                    icons.push(name.to_string());
+                }
+            }
+        }
+    }
+    icons.sort();
+    icons
+}
+
+#[tauri::command]
+fn get_preset_commands() -> Vec<(String, String, String)> {
+    vec![
+        // Multimedia
+        ("Vol +".to_string(), "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+".to_string(), "Subir volumen".to_string()),
+        ("Vol -".to_string(), "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-".to_string(), "Bajar volumen".to_string()),
+        ("Mute".to_string(), "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle".to_string(), "Silenciar/Activar audio".to_string()),
+        ("Play/Pause".to_string(), "playerctl play-pause".to_string(), "Reproducir/Pausar media".to_string()),
+        ("Next".to_string(), "playerctl next".to_string(), "Siguiente pista".to_string()),
+        ("Prev".to_string(), "playerctl previous".to_string(), "Pista anterior".to_string()),
+
+        // Apps comunes
+        ("Firefox".to_string(), "firefox".to_string(), "Navegador Firefox".to_string()),
+        ("Chrome".to_string(), "google-chrome-stable || chromium".to_string(), "Navegador Chrome/Chromium".to_string()),
+        ("Terminal".to_string(), "kitty || alacritty || gnome-terminal".to_string(), "Terminal".to_string()),
+        ("Files".to_string(), "thunar || nautilus || dolphin".to_string(), "Administrador de archivos".to_string()),
+        ("VS Code".to_string(), "code || codium".to_string(), "Visual Studio Code".to_string()),
+        ("Discord".to_string(), "discord".to_string(), "Discord".to_string()),
+        ("Spotify".to_string(), "spotify".to_string(), "Spotify".to_string()),
+        ("Steam".to_string(), "steam".to_string(), "Steam".to_string()),
+        ("OBS".to_string(), "obs".to_string(), "OBS Studio".to_string()),
+
+        // Hyprland/Sway workspaces
+        ("WS 1".to_string(), "hyprctl dispatch workspace 1".to_string(), "Ir a workspace 1".to_string()),
+        ("WS 2".to_string(), "hyprctl dispatch workspace 2".to_string(), "Ir a workspace 2".to_string()),
+        ("WS 3".to_string(), "hyprctl dispatch workspace 3".to_string(), "Ir a workspace 3".to_string()),
+        ("WS 4".to_string(), "hyprctl dispatch workspace 4".to_string(), "Ir a workspace 4".to_string()),
+        ("WS 5".to_string(), "hyprctl dispatch workspace 5".to_string(), "Ir a workspace 5".to_string()),
+
+        // Sistema
+        ("Screenshot".to_string(), "grim -g \"$(slurp)\" - | wl-copy".to_string(), "Captura de pantalla".to_string()),
+        ("Lock".to_string(), "swaylock || i3lock".to_string(), "Bloquear pantalla".to_string()),
+        ("Suspend".to_string(), "systemctl suspend".to_string(), "Suspender sistema".to_string()),
+
+        // Navegación de páginas
+        (">> Next".to_string(), "__NEXT_PAGE__".to_string(), "Siguiente página".to_string()),
+        ("<< Prev".to_string(), "__PREV_PAGE__".to_string(), "Página anterior".to_string()),
+        ("Home".to_string(), "__PAGE_0__".to_string(), "Ir a página principal".to_string()),
+    ]
+}
+
 // ============================================================================
 // Tauri App Entry Point
 // ============================================================================
@@ -419,6 +562,7 @@ fn check_udev_rules() -> bool {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
             fs::create_dir_all(&app_dir).ok();
@@ -444,6 +588,11 @@ pub fn run() {
             get_icons_path,
             setup_udev_rules,
             check_udev_rules,
+            save_icon,
+            reset_config,
+            list_icons,
+            get_preset_commands,
+            clear_page_buttons,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
