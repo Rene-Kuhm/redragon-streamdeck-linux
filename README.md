@@ -17,13 +17,28 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
 - Auto-inicio con systemd
 - Compatible con Hyprland, GNOME, KDE y otros
 
-## Requisitos
+## Instalación Rápida (Recomendado)
 
-- Linux (probado en Arch/CachyOS con Hyprland)
-- Node.js 18 o superior
-- ImageMagick (para generar imágenes de botones)
+```bash
+git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
+cd redragon-streamdeck-linux-
+./install.sh
+```
 
-## Instalación
+El script automáticamente:
+- Detecta tu distribución (Arch, Debian, Ubuntu, Fedora, openSUSE)
+- Instala todas las dependencias
+- Configura permisos USB (udev)
+- Instala el servicio de auto-inicio
+- Inicia el Stream Deck
+
+**¡Listo!** Abre http://localhost:3000 en tu navegador.
+
+---
+
+## Instalación Manual
+
+Si prefieres instalar manualmente, sigue estos pasos:
 
 ### 1. Clonar el repositorio
 
@@ -259,6 +274,14 @@ journalctl --user -u redragon-streamdeck.service -f
 
 - **Tecnodespegue** - Desarrollo y mantenimiento
 - Basado en el protocolo de [mirabox-streamdock-node](https://github.com/nicross/mirabox-streamdock-node)
+
+## Desinstalar
+
+Para eliminar el software:
+
+```bash
+./uninstall.sh
+```
 
 ## Licencia
 
