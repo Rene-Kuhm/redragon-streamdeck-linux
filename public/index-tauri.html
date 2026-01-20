@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redragon Stream Deck</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+</head>
+<body>
+  <!-- Animated Particles -->
+  <div class="particles" id="particles"></div>
+
+  <div class="container">
+    <header>
+      <div class="logo-section">
+        <div class="logo-icon">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="16" height="16" rx="3" fill="url(#grad1)" opacity="0.9"/>
+            <rect x="22" y="2" width="16" height="16" rx="3" fill="url(#grad2)" opacity="0.7"/>
+            <rect x="2" y="22" width="16" height="16" rx="3" fill="url(#grad2)" opacity="0.7"/>
+            <rect x="22" y="22" width="16" height="16" rx="3" fill="url(#grad1)" opacity="0.9"/>
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#e94560"/>
+                <stop offset="100%" style="stop-color:#ff6b6b"/>
+              </linearGradient>
+              <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#4ecca3"/>
+                <stop offset="100%" style="stop-color:#6ee7b7"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="title-group">
+          <h1>Redragon Stream Deck</h1>
+          <span class="subtitle">por Tecnodespegue</span>
+        </div>
+      </div>
+      <div class="status">
+        <div class="status-badge">
+          <span id="status-indicator"></span>
+          <span id="status-text">Desconectado</span>
+        </div>
+        <button id="reconnect-btn" onclick="reconnect()">
+          <span class="btn-icon">⟳</span>
+          Reconectar
+        </button>
+      </div>
+    </header>
+
+    <div class="controls">
+      <label>
+        <span class="control-label">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          Brillo
+        </span>
+        <input type="range" id="brightness" min="0" max="100" value="50" onchange="setBrightness(this.value)">
+        <span id="brightness-value">50</span>%
+      </label>
+    </div>
+
+    <!-- Selector de páginas -->
+    <div class="pages-container">
+      <div class="pages-header">
+        <h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          Páginas
+        </h3>
+        <button onclick="addPage()" class="btn-add">
+          <span>+</span> Nueva
+        </button>
+      </div>
+      <div id="pages-tabs" class="pages-tabs"></div>
+    </div>
+
+    <div class="streamdeck">
+      <div class="streamdeck-inner">
+        <!-- Fila 1: Botones 11-15 -->
+        <div class="row">
+          <div class="button" data-id="11" onclick="editButton(11)"></div>
+          <div class="button" data-id="12" onclick="editButton(12)"></div>
+          <div class="button" data-id="13" onclick="editButton(13)"></div>
+          <div class="button" data-id="14" onclick="editButton(14)"></div>
+          <div class="button" data-id="15" onclick="editButton(15)"></div>
+        </div>
+        <!-- Fila 2: Botones 6-10 -->
+        <div class="row">
+          <div class="button" data-id="6" onclick="editButton(6)"></div>
+          <div class="button" data-id="7" onclick="editButton(7)"></div>
+          <div class="button" data-id="8" onclick="editButton(8)"></div>
+          <div class="button" data-id="9" onclick="editButton(9)"></div>
+          <div class="button" data-id="10" onclick="editButton(10)"></div>
+        </div>
+        <!-- Fila 3: Botones 1-5 -->
+        <div class="row">
+          <div class="button" data-id="1" onclick="editButton(1)"></div>
+          <div class="button" data-id="2" onclick="editButton(2)"></div>
+          <div class="button" data-id="3" onclick="editButton(3)"></div>
+          <div class="button" data-id="4" onclick="editButton(4)"></div>
+          <div class="button" data-id="5" onclick="editButton(5)"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <span class="creator">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+          <path d="M2 2l7.586 7.586"/>
+          <circle cx="11" cy="11" r="2"/>
+        </svg>
+        Creado por <strong>Tecnodespegue</strong>
+      </span>
+      <span class="version">v2.0</span>
+    </footer>
+
+    <!-- Modal Editor -->
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Editar Botón <span id="modal-btn-id"></span>
+          </h2>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            Etiqueta
+          </label>
+          <input type="text" id="edit-label" placeholder="Texto del botón">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"/>
+              <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            Comando
+          </label>
+          <input type="text" id="edit-command" placeholder="ej: firefox, __NEXT_PAGE__, __PREV_PAGE__">
+          <small>Usa __NEXT_PAGE__, __PREV_PAGE__ o __PAGE_X__ para navegación</small>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="13.5" cy="6.5" r="2.5"/>
+              <circle cx="6.5" cy="17.5" r="2.5"/>
+              <circle cx="17.5" cy="17.5" r="2.5"/>
+            </svg>
+            Color de fondo
+          </label>
+          <input type="color" id="edit-color" value="#1a1a2e">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            Icono (256x256)
+          </label>
+          <div class="icon-upload">
+            <div id="icon-preview" class="icon-preview"></div>
+            <div class="icon-actions">
+              <input type="file" id="edit-icon" accept="image/*" onchange="previewIcon(this)">
+              <button onclick="removeIcon()" class="btn-secondary btn-small">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                Quitar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button onclick="saveButton()" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Guardar
+          </button>
+          <button onclick="closeModal()" class="btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Página (Editar) -->
+    <div id="page-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Editar Página
+          </h2>
+        </div>
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" id="page-name" placeholder="Nombre de la página">
+        </div>
+        <div class="modal-actions">
+          <button onclick="savePageName()" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Guardar
+          </button>
+          <button onclick="deletePage()" class="btn-danger">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Eliminar
+          </button>
+          <button onclick="closePageModal()" class="btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Nueva Página -->
+    <div id="new-page-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            Nueva Página
+          </h2>
+        </div>
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            Nombre de la página
+          </label>
+          <input type="text" id="new-page-name" placeholder="Ej: Streaming, Música, Trabajo...">
+        </div>
+        <div class="modal-actions">
+          <button onclick="createNewPage()" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear Página
+          </button>
+          <button onclick="closeNewPageModal()" class="btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Confirmar Eliminación -->
+    <div id="confirm-modal" class="modal">
+      <div class="modal-content modal-confirm">
+        <div class="confirm-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2>¿Eliminar página?</h2>
+        <p id="confirm-message">Esta acción no se puede deshacer.</p>
+        <div class="modal-actions">
+          <button onclick="confirmDelete()" class="btn-danger">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Eliminar
+          </button>
+          <button onclick="closeConfirmModal()" class="btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/@tauri-apps/api@2/dist/core.js"></script>
+  <script src="app-tauri.js"></script>
+  <script>
+    // Create animated particles
+    function createParticles() {
+      const container = document.getElementById('particles');
+      const particleCount = 50;
+
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.cssText = `
+          left: ${Math.random() * 100}%;
+          top: ${Math.random() * 100}%;
+          animation-delay: ${Math.random() * 20}s;
+          animation-duration: ${15 + Math.random() * 20}s;
+        `;
+        container.appendChild(particle);
+      }
+    }
+
+    createParticles();
+  </script>
+</body>
+</html>

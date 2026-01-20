@@ -4,10 +4,7 @@
   "version": "2.0.0",
   "identifier": "com.tecnodespegue.redragon-streamdeck",
   "build": {
-    "frontendDist": "../public",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "frontendDist": "../public"
   },
   "app": {
     "windows": [
