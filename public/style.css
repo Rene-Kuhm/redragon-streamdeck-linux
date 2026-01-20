@@ -1404,6 +1404,81 @@ input:focus-visible {
   height: 14px;
 }
 
+/* Hotkey Input Group */
+.hotkey-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hotkey-input-group input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.75rem;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.hotkey-input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.btn-record {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: rgba(233, 69, 96, 0.15);
+  border: 1px solid rgba(233, 69, 96, 0.3);
+  border-radius: 8px;
+  color: var(--primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-record:hover {
+  background: rgba(233, 69, 96, 0.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 15px rgba(233, 69, 96, 0.3);
+}
+
+.btn-record.recording {
+  background: rgba(233, 69, 96, 0.4);
+  border-color: var(--primary);
+  animation: pulse-record 1s ease-in-out infinite;
+}
+
+.btn-record.recording svg circle:last-child {
+  fill: var(--primary);
+}
+
+@keyframes pulse-record {
+  0%, 100% { box-shadow: 0 0 5px rgba(233, 69, 96, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(233, 69, 96, 0.6); }
+}
+
+.hotkey-help {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.hotkey-help code {
+  background: rgba(233, 69, 96, 0.15);
+  color: var(--primary);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+}
+
 /* Command Help Section */
 .command-help {
   margin-top: 0.5rem;
