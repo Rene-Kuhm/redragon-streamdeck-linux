@@ -132,18 +132,19 @@ fn find_device() -> Option<DeviceHandle<Context>> {
     for device in context.devices().ok()?.iter() {
         let desc = device.device_descriptor().ok()?;
         if desc.vendor_id() == VENDOR_ID && desc.product_id() == PRODUCT_ID {
+            #[allow(unused_mut)]
             let mut handle = device.open().ok()?;
 
             // Detach kernel driver if attached (Linux)
             #[cfg(target_os = "linux")]
             {
                 if handle.kernel_driver_active(0).unwrap_or(false) {
-                    handle.detach_kernel_driver(0).ok();
+                    let _ = handle.detach_kernel_driver(0);
                 }
             }
 
             // Claim the interface
-            handle.claim_interface(0).ok()?;
+            let _ = handle.claim_interface(0);
 
             return Some(handle);
         }
