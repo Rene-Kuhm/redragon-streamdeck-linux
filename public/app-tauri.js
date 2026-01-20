@@ -475,6 +475,25 @@ function editButton(id) {
   document.getElementById('edit-color').value = btn.color || '#1a1a2e';
   document.getElementById('edit-icon-path').value = '';
 
+  // Show existing hotkey if present
+  const hotkeyInput = document.getElementById('edit-hotkey');
+  if (hotkeyInput) {
+    const existingHotkey = extractHotkeyFromCommand(btn.command);
+    hotkeyInput.value = existingHotkey;
+  }
+
+  // Reset recording state
+  isRecordingHotkey = false;
+  if (recordingInterval) {
+    clearInterval(recordingInterval);
+    recordingInterval = null;
+  }
+  const recordBtn = document.getElementById('record-hotkey-btn');
+  if (recordBtn) {
+    recordBtn.classList.remove('recording');
+    document.getElementById('record-btn-text').textContent = 'Grabar';
+  }
+
   const preview = document.getElementById('icon-preview');
   if (btn.icon) {
     // Load icon as base64 data URL
@@ -641,6 +660,16 @@ async function saveButton() {
     } catch (e) {
       console.log('Could not update device:', e);
     }
+
+    // Reload hotkeys if the command contains a hotkey
+    if (command.startsWith('__HOTKEY_')) {
+      try {
+        await invoke('reload_hotkeys');
+        console.log('Hotkeys reloaded');
+      } catch (e) {
+        console.log('Could not reload hotkeys:', e);
+      }
+    }
   } catch (e) {
     console.error('Error saving button:', e);
     showToast('Error al guardar botón');
@@ -690,3 +719,98 @@ document.getElementById('new-page-modal').addEventListener('click', (e) => {
 document.getElementById('confirm-modal').addEventListener('click', (e) => {
   if (e.target.id === 'confirm-modal') closeConfirmModal();
 });
+
+// ============================================================================
+// Global Hotkey Recording
+// ============================================================================
+
+let isRecordingHotkey = false;
+let recordingInterval = null;
+
+async function toggleHotkeyRecording() {
+  const btn = document.getElementById('record-hotkey-btn');
+  const btnText = document.getElementById('record-btn-text');
+  const input = document.getElementById('edit-hotkey');
+
+  if (!isRecordingHotkey) {
+    // Start recording
+    try {
+      await invoke('start_hotkey_recording');
+      isRecordingHotkey = true;
+      btn.classList.add('recording');
+      btnText.textContent = 'Detener';
+      input.value = 'Presiona las teclas...';
+      input.style.borderColor = 'var(--primary)';
+
+      // Poll for current recording every 100ms
+      recordingInterval = setInterval(async () => {
+        try {
+          const current = await invoke('get_current_recording');
+          if (current) {
+            input.value = current;
+          }
+        } catch (e) {
+          console.error('Error getting current recording:', e);
+        }
+      }, 100);
+
+      showToast('Grabando... presiona las teclas');
+    } catch (e) {
+      console.error('Error starting hotkey recording:', e);
+      showToast('Error al iniciar grabación');
+    }
+  } else {
+    // Stop recording
+    try {
+      clearInterval(recordingInterval);
+      recordingInterval = null;
+
+      const hotkey = await invoke('stop_hotkey_recording');
+      isRecordingHotkey = false;
+      btn.classList.remove('recording');
+      btnText.textContent = 'Grabar';
+      input.style.borderColor = '';
+
+      if (hotkey) {
+        input.value = hotkey;
+        showToast(`Hotkey grabada: ${hotkey}`);
+
+        // Update the command field if it doesn't already have a hotkey
+        const commandInput = document.getElementById('edit-command');
+        const currentCommand = commandInput.value;
+
+        if (!currentCommand.startsWith('__HOTKEY_')) {
+          // Add hotkey prefix to existing command
+          if (currentCommand) {
+            commandInput.value = `__HOTKEY_${hotkey}__${currentCommand}`;
+          } else {
+            commandInput.value = `__HOTKEY_${hotkey}__`;
+          }
+        } else {
+          // Replace existing hotkey
+          const match = currentCommand.match(/^__HOTKEY_[^_]+__(.*)/);
+          const existingCmd = match ? match[1] : '';
+          commandInput.value = `__HOTKEY_${hotkey}__${existingCmd}`;
+        }
+      } else {
+        input.value = '';
+        showToast('No se detectaron teclas');
+      }
+    } catch (e) {
+      console.error('Error stopping hotkey recording:', e);
+      showToast('Error al detener grabación');
+      isRecordingHotkey = false;
+      btn.classList.remove('recording');
+      btnText.textContent = 'Grabar';
+    }
+  }
+}
+
+// Extract hotkey from command string for display in edit modal
+function extractHotkeyFromCommand(command) {
+  if (command && command.startsWith('__HOTKEY_')) {
+    const match = command.match(/^__HOTKEY_([^_]+)__/);
+    return match ? match[1] : '';
+  }
+  return '';
+}

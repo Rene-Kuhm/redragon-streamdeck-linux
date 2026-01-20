@@ -6,7 +6,7 @@ use std::io::{Cursor, Read as IoRead, Write as IoWrite};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
@@ -19,6 +19,7 @@ use sysinfo::System;
 use tungstenite::{connect, Message};
 use sha2::{Sha256, Digest};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use rdev::{listen, Event, EventType, Key};
 
 // USB IDs for Redragon SS-550
 const VENDOR_ID: u16 = 0x0200;
@@ -30,6 +31,366 @@ static REFRESH_NEEDED: AtomicBool = AtomicBool::new(false);
 // Global timer state (timestamp when timer started, 0 = not running)
 static TIMER_START: AtomicU64 = AtomicU64::new(0);
 static TIMER_DURATION: AtomicU64 = AtomicU64::new(0); // Duration in seconds
+
+// ============================================================================
+// Global Hotkey System
+// ============================================================================
+
+// Registered hotkeys: maps key combination string to (page, button_id)
+lazy_static::lazy_static! {
+    static ref REGISTERED_HOTKEYS: RwLock<HashMap<String, (usize, u8)>> = RwLock::new(HashMap::new());
+    static ref CURRENT_KEYS: RwLock<Vec<Key>> = RwLock::new(Vec::new());
+    static ref HOTKEY_RECORDING: AtomicBool = AtomicBool::new(false);
+    static ref RECORDED_HOTKEY: RwLock<Vec<Key>> = RwLock::new(Vec::new());
+    static ref GLOBAL_CONFIG_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+    static ref GLOBAL_ICONS_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+}
+
+// Convert rdev::Key to a readable string
+fn key_to_string(key: &Key) -> String {
+    match key {
+        Key::Alt => "Alt".to_string(),
+        Key::AltGr => "AltGr".to_string(),
+        Key::Backspace => "Backspace".to_string(),
+        Key::CapsLock => "CapsLock".to_string(),
+        Key::ControlLeft => "Ctrl".to_string(),
+        Key::ControlRight => "RCtrl".to_string(),
+        Key::Delete => "Delete".to_string(),
+        Key::DownArrow => "Down".to_string(),
+        Key::End => "End".to_string(),
+        Key::Escape => "Esc".to_string(),
+        Key::F1 => "F1".to_string(),
+        Key::F2 => "F2".to_string(),
+        Key::F3 => "F3".to_string(),
+        Key::F4 => "F4".to_string(),
+        Key::F5 => "F5".to_string(),
+        Key::F6 => "F6".to_string(),
+        Key::F7 => "F7".to_string(),
+        Key::F8 => "F8".to_string(),
+        Key::F9 => "F9".to_string(),
+        Key::F10 => "F10".to_string(),
+        Key::F11 => "F11".to_string(),
+        Key::F12 => "F12".to_string(),
+        Key::Home => "Home".to_string(),
+        Key::LeftArrow => "Left".to_string(),
+        Key::MetaLeft => "Super".to_string(),
+        Key::MetaRight => "RSuper".to_string(),
+        Key::PageDown => "PageDown".to_string(),
+        Key::PageUp => "PageUp".to_string(),
+        Key::Return => "Enter".to_string(),
+        Key::RightArrow => "Right".to_string(),
+        Key::ShiftLeft => "Shift".to_string(),
+        Key::ShiftRight => "RShift".to_string(),
+        Key::Space => "Space".to_string(),
+        Key::Tab => "Tab".to_string(),
+        Key::UpArrow => "Up".to_string(),
+        Key::PrintScreen => "PrintScreen".to_string(),
+        Key::ScrollLock => "ScrollLock".to_string(),
+        Key::Pause => "Pause".to_string(),
+        Key::NumLock => "NumLock".to_string(),
+        Key::Insert => "Insert".to_string(),
+        Key::KeyA => "A".to_string(),
+        Key::KeyB => "B".to_string(),
+        Key::KeyC => "C".to_string(),
+        Key::KeyD => "D".to_string(),
+        Key::KeyE => "E".to_string(),
+        Key::KeyF => "F".to_string(),
+        Key::KeyG => "G".to_string(),
+        Key::KeyH => "H".to_string(),
+        Key::KeyI => "I".to_string(),
+        Key::KeyJ => "J".to_string(),
+        Key::KeyK => "K".to_string(),
+        Key::KeyL => "L".to_string(),
+        Key::KeyM => "M".to_string(),
+        Key::KeyN => "N".to_string(),
+        Key::KeyO => "O".to_string(),
+        Key::KeyP => "P".to_string(),
+        Key::KeyQ => "Q".to_string(),
+        Key::KeyR => "R".to_string(),
+        Key::KeyS => "S".to_string(),
+        Key::KeyT => "T".to_string(),
+        Key::KeyU => "U".to_string(),
+        Key::KeyV => "V".to_string(),
+        Key::KeyW => "W".to_string(),
+        Key::KeyX => "X".to_string(),
+        Key::KeyY => "Y".to_string(),
+        Key::KeyZ => "Z".to_string(),
+        Key::Num0 => "0".to_string(),
+        Key::Num1 => "1".to_string(),
+        Key::Num2 => "2".to_string(),
+        Key::Num3 => "3".to_string(),
+        Key::Num4 => "4".to_string(),
+        Key::Num5 => "5".to_string(),
+        Key::Num6 => "6".to_string(),
+        Key::Num7 => "7".to_string(),
+        Key::Num8 => "8".to_string(),
+        Key::Num9 => "9".to_string(),
+        Key::Kp0 => "KP0".to_string(),
+        Key::Kp1 => "KP1".to_string(),
+        Key::Kp2 => "KP2".to_string(),
+        Key::Kp3 => "KP3".to_string(),
+        Key::Kp4 => "KP4".to_string(),
+        Key::Kp5 => "KP5".to_string(),
+        Key::Kp6 => "KP6".to_string(),
+        Key::Kp7 => "KP7".to_string(),
+        Key::Kp8 => "KP8".to_string(),
+        Key::Kp9 => "KP9".to_string(),
+        Key::KpMinus => "KP-".to_string(),
+        Key::KpPlus => "KP+".to_string(),
+        Key::KpMultiply => "KP*".to_string(),
+        Key::KpDivide => "KP/".to_string(),
+        Key::KpDelete => "KP.".to_string(),
+        Key::KpReturn => "KPEnter".to_string(),
+        Key::Minus => "-".to_string(),
+        Key::Equal => "=".to_string(),
+        Key::LeftBracket => "[".to_string(),
+        Key::RightBracket => "]".to_string(),
+        Key::SemiColon => ";".to_string(),
+        Key::Quote => "'".to_string(),
+        Key::BackQuote => "`".to_string(),
+        Key::BackSlash => "\\".to_string(),
+        Key::Comma => ",".to_string(),
+        Key::Dot => ".".to_string(),
+        Key::Slash => "/".to_string(),
+        Key::Unknown(code) => format!("Key{}", code),
+        _ => format!("{:?}", key),
+    }
+}
+
+// Check if a key is a modifier
+fn is_modifier(key: &Key) -> bool {
+    matches!(key,
+        Key::Alt | Key::AltGr |
+        Key::ControlLeft | Key::ControlRight |
+        Key::ShiftLeft | Key::ShiftRight |
+        Key::MetaLeft | Key::MetaRight
+    )
+}
+
+// Convert current pressed keys to a normalized hotkey string
+fn keys_to_hotkey_string(keys: &[Key]) -> String {
+    let mut modifiers: Vec<&str> = Vec::new();
+    let mut regular_keys: Vec<String> = Vec::new();
+
+    for key in keys {
+        if is_modifier(key) {
+            let mod_name = match key {
+                Key::ControlLeft | Key::ControlRight => "Ctrl",
+                Key::ShiftLeft | Key::ShiftRight => "Shift",
+                Key::Alt | Key::AltGr => "Alt",
+                Key::MetaLeft | Key::MetaRight => "Super",
+                _ => continue,
+            };
+            if !modifiers.contains(&mod_name) {
+                modifiers.push(mod_name);
+            }
+        } else {
+            regular_keys.push(key_to_string(key));
+        }
+    }
+
+    // Sort modifiers in consistent order: Ctrl+Shift+Alt+Super
+    let order = ["Ctrl", "Shift", "Alt", "Super"];
+    modifiers.sort_by_key(|m| order.iter().position(|o| o == m).unwrap_or(99));
+
+    let mut result: Vec<String> = modifiers.iter().map(|s| s.to_string()).collect();
+    result.extend(regular_keys);
+    result.join("+")
+}
+
+// Start the global keyboard listener
+fn start_keyboard_listener(config_path: PathBuf, icons_path: PathBuf) {
+    // Store paths globally for use in the callback
+    if let Ok(mut path) = GLOBAL_CONFIG_PATH.write() {
+        *path = Some(config_path.clone());
+    }
+    if let Ok(mut path) = GLOBAL_ICONS_PATH.write() {
+        *path = Some(icons_path.clone());
+    }
+
+    thread::spawn(move || {
+        eprintln!("DEBUG: Global keyboard listener started");
+
+        if let Err(e) = listen(move |event: Event| {
+            match event.event_type {
+                EventType::KeyPress(key) => {
+                    // Add key to current pressed keys
+                    if let Ok(mut keys) = CURRENT_KEYS.write() {
+                        if !keys.contains(&key) {
+                            keys.push(key);
+                        }
+
+                        // If recording, update recorded keys
+                        if HOTKEY_RECORDING.load(Ordering::Relaxed) {
+                            if let Ok(mut recorded) = RECORDED_HOTKEY.write() {
+                                if !recorded.contains(&key) {
+                                    recorded.push(key);
+                                }
+                            }
+                        } else {
+                            // Check if current combination matches a registered hotkey
+                            let hotkey_str = keys_to_hotkey_string(&keys);
+                            if !hotkey_str.is_empty() {
+                                if let Ok(hotkeys) = REGISTERED_HOTKEYS.read() {
+                                    if let Some((page, button_id)) = hotkeys.get(&hotkey_str) {
+                                        eprintln!("DEBUG: Hotkey triggered: {} -> page {}, button {}", hotkey_str, page, button_id);
+                                        // Execute the button action
+                                        if let Ok(cfg_path) = GLOBAL_CONFIG_PATH.read() {
+                                            if let Ok(icn_path) = GLOBAL_ICONS_PATH.read() {
+                                                if let (Some(cp), Some(ip)) = (cfg_path.as_ref(), icn_path.as_ref()) {
+                                                    trigger_hotkey_action(*page, *button_id, cp, ip);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                EventType::KeyRelease(key) => {
+                    // Remove key from current pressed keys
+                    if let Ok(mut keys) = CURRENT_KEYS.write() {
+                        keys.retain(|k| k != &key);
+                    }
+                }
+                _ => {}
+            }
+        }) {
+            eprintln!("ERROR: Keyboard listener failed: {:?}", e);
+        }
+    });
+}
+
+// Trigger action for a hotkey-activated button
+fn trigger_hotkey_action(page: usize, button_id: u8, config_path: &PathBuf, icons_path: &PathBuf) {
+    // Read config to get the button command
+    let config: Config = match fs::read_to_string(config_path) {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+
+    // Get the specific page and button
+    if let Some(target_page) = config.pages.get(page) {
+        if let Some(button) = target_page.buttons.get(&button_id.to_string()) {
+            if !button.command.is_empty() {
+                // Extract the actual command (remove __HOTKEY_ prefix if present)
+                let cmd = if button.command.starts_with("__HOTKEY_") {
+                    // Find the command after the hotkey definition
+                    // Format: __HOTKEY_Ctrl+F1__command_here or just __HOTKEY_Ctrl+F1__
+                    if let Some(idx) = button.command[9..].find("__") {
+                        let after_hotkey = &button.command[9 + idx + 2..];
+                        if after_hotkey.is_empty() {
+                            return; // No command after hotkey
+                        }
+                        after_hotkey.to_string()
+                    } else {
+                        return; // Malformed hotkey command
+                    }
+                } else {
+                    button.command.clone()
+                };
+
+                eprintln!("DEBUG: Executing hotkey command: {}", cmd);
+
+                // Execute the command in a new thread
+                let config_path_clone = config_path.clone();
+                let icons_path_clone = icons_path.clone();
+                thread::spawn(move || {
+                    execute_hotkey_command(&cmd, &config_path_clone, &icons_path_clone);
+                });
+            }
+        }
+    }
+}
+
+// Execute a command from hotkey (reuses existing command logic)
+fn execute_hotkey_command(cmd: &str, config_path: &PathBuf, icons_path: &PathBuf) {
+    // Handle __URL_ command
+    if cmd.starts_with("__URL_") {
+        let url = &cmd[6..];
+        Command::new("xdg-open").arg(url).spawn().ok();
+        return;
+    }
+
+    // Handle __TYPE_ command
+    if cmd.starts_with("__TYPE_") {
+        let text = &cmd[7..];
+        Command::new("ydotool")
+            .args(["type", "--clearmodifiers", text])
+            .spawn()
+            .ok();
+        return;
+    }
+
+    // Handle __KEY_ command
+    if cmd.starts_with("__KEY_") {
+        let keys = &cmd[6..];
+        execute_hotkey(keys);
+        return;
+    }
+
+    // Handle page navigation
+    if cmd == "__NEXT_PAGE__" || cmd == "__PREV_PAGE__" || cmd.starts_with("__PAGE_") {
+        // Read config to get page count
+        if let Ok(content) = fs::read_to_string(config_path) {
+            if let Ok(config) = serde_json::from_str::<Config>(&content) {
+                let new_page = if cmd == "__NEXT_PAGE__" {
+                    (config.current_page + 1) % config.pages.len()
+                } else if cmd == "__PREV_PAGE__" {
+                    if config.current_page == 0 { config.pages.len() - 1 } else { config.current_page - 1 }
+                } else if cmd.starts_with("__PAGE_") && cmd.ends_with("__") {
+                    cmd[7..cmd.len()-2].parse::<usize>().unwrap_or(config.current_page)
+                } else {
+                    return;
+                };
+                change_page(new_page, config_path, icons_path);
+            }
+        }
+        return;
+    }
+
+    // Normal shell command
+    Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .spawn()
+        .ok();
+}
+
+// Load registered hotkeys from config
+fn load_hotkeys_from_config(config_path: &PathBuf) {
+    let config: Config = match fs::read_to_string(config_path) {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+
+    if let Ok(mut hotkeys) = REGISTERED_HOTKEYS.write() {
+        hotkeys.clear();
+
+        for (page_idx, page) in config.pages.iter().enumerate() {
+            for (button_id_str, button) in &page.buttons {
+                if button.command.starts_with("__HOTKEY_") {
+                    // Extract hotkey combination: __HOTKEY_Ctrl+F1__...
+                    let hotkey_part = &button.command[9..];
+                    if let Some(end_idx) = hotkey_part.find("__") {
+                        let hotkey_str = &hotkey_part[..end_idx];
+                        if let Ok(button_id) = button_id_str.parse::<u8>() {
+                            eprintln!("DEBUG: Registered hotkey '{}' for page {} button {}", hotkey_str, page_idx, button_id);
+                            hotkeys.insert(hotkey_str.to_string(), (page_idx, button_id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 // ============================================================================
 // Data Structures
@@ -828,8 +1189,6 @@ fn get_widget_text(cmd: &str) -> Option<String> {
 // ============================================================================
 // OBS WebSocket Integration (obs-websocket 5.x)
 // ============================================================================
-
-use std::sync::RwLock;
 
 // OBS connection state
 lazy_static::lazy_static! {
@@ -2427,7 +2786,100 @@ fn get_preset_commands() -> Vec<(String, String, String)> {
         (">> Next".to_string(), "__NEXT_PAGE__".to_string(), "Siguiente página".to_string()),
         ("<< Prev".to_string(), "__PREV_PAGE__".to_string(), "Página anterior".to_string()),
         ("Home".to_string(), "__PAGE_0__".to_string(), "Ir a página principal".to_string()),
+
+        // Global Hotkeys
+        ("Hotkey F1".to_string(), "__HOTKEY_F1__".to_string(), "Activar con tecla F1".to_string()),
+        ("Hotkey Ctrl+F1".to_string(), "__HOTKEY_Ctrl+F1__".to_string(), "Activar con Ctrl+F1".to_string()),
+        ("Hotkey Ctrl+Shift+1".to_string(), "__HOTKEY_Ctrl+Shift+1__".to_string(), "Activar con Ctrl+Shift+1".to_string()),
     ]
+}
+
+// ============================================================================
+// Hotkey Recording Commands
+// ============================================================================
+
+#[tauri::command]
+fn start_hotkey_recording() -> Result<(), String> {
+    eprintln!("DEBUG: Starting hotkey recording");
+    // Clear previous recorded keys
+    if let Ok(mut recorded) = RECORDED_HOTKEY.write() {
+        recorded.clear();
+    }
+    // Start recording
+    HOTKEY_RECORDING.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_hotkey_recording() -> Result<String, String> {
+    eprintln!("DEBUG: Stopping hotkey recording");
+    HOTKEY_RECORDING.store(false, Ordering::Relaxed);
+
+    // Get the recorded keys
+    let hotkey_str = if let Ok(recorded) = RECORDED_HOTKEY.read() {
+        keys_to_hotkey_string(&recorded)
+    } else {
+        String::new()
+    };
+
+    // Clear recorded keys
+    if let Ok(mut recorded) = RECORDED_HOTKEY.write() {
+        recorded.clear();
+    }
+
+    // Also clear current keys
+    if let Ok(mut current) = CURRENT_KEYS.write() {
+        current.clear();
+    }
+
+    eprintln!("DEBUG: Recorded hotkey: {}", hotkey_str);
+    Ok(hotkey_str)
+}
+
+#[tauri::command]
+fn get_current_recording() -> Result<String, String> {
+    if let Ok(recorded) = RECORDED_HOTKEY.read() {
+        Ok(keys_to_hotkey_string(&recorded))
+    } else {
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
+fn register_hotkey(hotkey: String, page: usize, button_id: u8) -> Result<(), String> {
+    eprintln!("DEBUG: Registering hotkey '{}' for page {} button {}", hotkey, page, button_id);
+    if let Ok(mut hotkeys) = REGISTERED_HOTKEYS.write() {
+        hotkeys.insert(hotkey, (page, button_id));
+        Ok(())
+    } else {
+        Err("Failed to register hotkey".to_string())
+    }
+}
+
+#[tauri::command]
+fn unregister_hotkey(hotkey: String) -> Result<(), String> {
+    eprintln!("DEBUG: Unregistering hotkey '{}'", hotkey);
+    if let Ok(mut hotkeys) = REGISTERED_HOTKEYS.write() {
+        hotkeys.remove(&hotkey);
+        Ok(())
+    } else {
+        Err("Failed to unregister hotkey".to_string())
+    }
+}
+
+#[tauri::command]
+fn get_registered_hotkeys() -> Result<Vec<(String, usize, u8)>, String> {
+    if let Ok(hotkeys) = REGISTERED_HOTKEYS.read() {
+        Ok(hotkeys.iter().map(|(k, (p, b))| (k.clone(), *p, *b)).collect())
+    } else {
+        Err("Failed to get hotkeys".to_string())
+    }
+}
+
+#[tauri::command]
+fn reload_hotkeys(state: State<AppState>) -> Result<(), String> {
+    load_hotkeys_from_config(&state.config_path);
+    Ok(())
 }
 
 // ============================================================================
@@ -2449,7 +2901,13 @@ pub fn run() {
             // Start the button listener in background
             let config_path = app_dir.join("config.json");
             let icons_path = app_dir.join("icons");
-            start_button_listener(config_path, icons_path);
+            start_button_listener(config_path.clone(), icons_path.clone());
+
+            // Start global keyboard listener for hotkeys
+            start_keyboard_listener(config_path.clone(), icons_path.clone());
+
+            // Load registered hotkeys from config
+            load_hotkeys_from_config(&config_path);
 
             app.manage(state);
 
@@ -2478,6 +2936,14 @@ pub fn run() {
             get_icon_data,
             get_preset_commands,
             clear_page_buttons,
+            // Hotkey commands
+            start_hotkey_recording,
+            stop_hotkey_recording,
+            get_current_recording,
+            register_hotkey,
+            unregister_hotkey,
+            get_registered_hotkeys,
+            reload_hotkeys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -226,6 +226,30 @@ TWITCH_CHANNEL=tu_canal
         <div class="form-group">
           <label>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/>
+            </svg>
+            Hotkey Global (activar con teclado)
+          </label>
+          <div class="hotkey-input-group">
+            <input type="text" id="edit-hotkey" placeholder="Presiona 'Grabar' y luego las teclas..." readonly>
+            <button type="button" id="record-hotkey-btn" onclick="toggleHotkeyRecording()" class="btn-record">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="4" fill="currentColor"/>
+              </svg>
+              <span id="record-btn-text">Grabar</span>
+            </button>
+          </div>
+          <small class="hotkey-help">
+            Asigna una combinación de teclas para activar este botón desde cualquier aplicación.
+            <br>Formato: <code>__HOTKEY_Ctrl+F1__comando</code> - El comando se ejecuta al presionar la hotkey.
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="13.5" cy="6.5" r="2.5"/>
               <circle cx="6.5" cy="17.5" r="2.5"/>
               <circle cx="17.5" cy="17.5" r="2.5"/>
