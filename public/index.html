@@ -164,12 +164,63 @@
             Comando
           </label>
           <div class="command-input-group">
-            <input type="text" id="edit-command" placeholder="ej: firefox, __NEXT_PAGE__">
+            <input type="text" id="edit-command" placeholder="ej: firefox, __URL_https://google.com">
             <select id="preset-commands" onchange="applyPreset(this)">
               <option value="">-- Comandos rápidos --</option>
             </select>
           </div>
-          <small>Selecciona un preset o escribe tu propio comando</small>
+          <div class="command-help">
+            <details>
+              <summary>Comandos especiales disponibles</summary>
+              <ul class="command-list">
+                <li><code>__URL_</code> - Abrir URL (ej: <code>__URL_https://youtube.com</code>)</li>
+                <li><code>__TYPE_</code> - Escribir texto (ej: <code>__TYPE_Hola mundo</code>)</li>
+                <li><code>__KEY_</code> - Hotkey (ej: <code>__KEY_ctrl+shift+s</code>)</li>
+                <li><code>__MULTI_</code> - Multi-acción separada por <code>;;</code></li>
+                <li><code>__DELAY_</code> - Esperar ms (solo en MULTI)</li>
+                <li><code>__NEXT_PAGE__</code> / <code>__PREV_PAGE__</code> - Cambiar página</li>
+              </ul>
+              <strong>Widgets (actualización automática):</strong>
+              <ul class="command-list">
+                <li><code>__CLOCK__</code> / <code>__CLOCK_S__</code> - Hora actual</li>
+                <li><code>__DATE__</code> / <code>__WEEKDAY__</code> - Fecha</li>
+                <li><code>__CPU__</code> / <code>__RAM__</code> / <code>__TEMP__</code> - Info sistema</li>
+                <li><code>__TIMER_N__</code> - Temporizador N minutos</li>
+                <li><code>__OBS_STATUS__</code> - Estado OBS (LIVE/REC)</li>
+                <li><code>__TWITCH_VIEWERS__</code> / <code>__TWITCH_FOLLOWERS__</code> - Stats Twitch</li>
+              </ul>
+              <strong>OBS Studio (requiere OBS WebSocket):</strong>
+              <ul class="command-list">
+                <li><code>__OBS_STREAM__</code> - Iniciar/Detener streaming</li>
+                <li><code>__OBS_RECORD__</code> - Iniciar/Detener grabación</li>
+                <li><code>__OBS_MUTE__</code> - Mutear/Desmutear micrófono</li>
+                <li><code>__OBS_SCENE_nombre</code> - Cambiar escena (ej: <code>__OBS_SCENE_Gaming</code>)</li>
+              </ul>
+              <strong>Twitch (requiere API tokens):</strong>
+              <ul class="command-list">
+                <li><code>__TWITCH_CLIP__</code> - Crear clip</li>
+                <li><code>__TWITCH_AD_N__</code> - Comercial N segundos (ej: <code>__TWITCH_AD_30__</code>)</li>
+                <li><code>__TWITCH_CHAT_mensaje</code> - Enviar mensaje al chat</li>
+              </ul>
+              <details style="margin-top: 8px; font-size: 11px;">
+                <summary>Configuración OBS/Twitch</summary>
+                <p style="margin: 4px 0;">Variables de entorno requeridas:</p>
+                <code style="font-size: 10px; display: block; background: #0a0a14; padding: 4px; border-radius: 4px;">
+OBS_WEBSOCKET_URL=ws://localhost:4455<br>
+OBS_WEBSOCKET_PASSWORD=tupassword<br>
+TWITCH_CLIENT_ID=tu_client_id<br>
+TWITCH_ACCESS_TOKEN=tu_token<br>
+TWITCH_CHANNEL=tu_canal
+                </code>
+              </details>
+            </details>
+          </div>
+          <button type="button" onclick="testCommand()" class="btn-test">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Probar comando
+          </button>
         </div>
 
         <div class="form-group">

@@ -67,6 +67,13 @@ function populatePresetDropdown() {
   const categories = {
     'Multimedia': presetCommands.filter(p => ['Vol +', 'Vol -', 'Mute', 'Play/Pause', 'Next', 'Prev'].includes(p[0])),
     'Aplicaciones': presetCommands.filter(p => ['Firefox', 'Chrome', 'Terminal', 'Files', 'VS Code', 'Discord', 'Spotify', 'Steam', 'OBS'].includes(p[0])),
+    'URLs': presetCommands.filter(p => ['YouTube', 'Twitch', 'GitHub', 'Twitter/X', 'ChatGPT', 'Claude'].includes(p[0])),
+    'Hotkeys': presetCommands.filter(p => ['Copiar', 'Pegar', 'Cortar', 'Deshacer', 'Rehacer', 'Guardar', 'Buscar', 'Seleccionar todo', 'Cerrar ventana', 'Cambiar ventana', 'Pantalla completa', 'Emoji picker'].includes(p[0])),
+    'Texto': presetCommands.filter(p => ['Email', 'Saludo', 'Firma'].includes(p[0])),
+    'Multi-acción': presetCommands.filter(p => ['Abrir+Escribir', 'Copy+Paste'].includes(p[0])),
+    'Fecha/Hora': presetCommands.filter(p => ['Reloj', 'Reloj+Seg', 'Fecha', 'Fecha completa', 'Día semana'].includes(p[0])),
+    'Info Sistema': presetCommands.filter(p => ['CPU %', 'RAM %', 'Temp CPU'].includes(p[0])),
+    'Timers': presetCommands.filter(p => p[0].startsWith('Timer ')),
     'Workspaces': presetCommands.filter(p => p[0].startsWith('WS ')),
     'Sistema': presetCommands.filter(p => ['Screenshot', 'Lock', 'Suspend'].includes(p[0])),
     'Navegación': presetCommands.filter(p => ['>> Next', '<< Prev', 'Home'].includes(p[0])),
@@ -96,6 +103,29 @@ function applyPreset(selectElement) {
     selectElement.value = ''; // Reset dropdown
   } catch (e) {
     console.error('Error applying preset:', e);
+  }
+}
+
+// Test command without saving
+async function testCommand() {
+  const command = document.getElementById('edit-command').value.trim();
+  if (!command) {
+    showToast('Ingresa un comando para probar');
+    return;
+  }
+
+  // Don't test page navigation commands
+  if (command === '__NEXT_PAGE__' || command === '__PREV_PAGE__' || command.startsWith('__PAGE_')) {
+    showToast('Los comandos de navegación solo funcionan desde el dispositivo');
+    return;
+  }
+
+  try {
+    await invoke('run_command', { command });
+    showToast('Comando ejecutado');
+  } catch (e) {
+    console.error('Error testing command:', e);
+    showToast('Error al ejecutar comando');
   }
 }
 
