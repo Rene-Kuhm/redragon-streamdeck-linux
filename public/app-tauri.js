@@ -814,3 +814,143 @@ function extractHotkeyFromCommand(command) {
   }
   return '';
 }
+
+// ============================================================================
+// Auto-Update System
+// ============================================================================
+
+let currentUpdateInfo = null;
+let skippedVersion = localStorage.getItem('skippedVersion') || null;
+
+// Check for updates on startup and periodically
+async function checkForUpdates() {
+  try {
+    console.log('Checking for updates...');
+    const updateInfo = await invoke('check_for_updates');
+    console.log('Update info:', updateInfo);
+
+    if (updateInfo.available) {
+      // Check if this version was skipped
+      if (skippedVersion === updateInfo.latest_commit) {
+        console.log('This version was skipped by user');
+        return;
+      }
+
+      currentUpdateInfo = updateInfo;
+      showUpdateIndicator();
+      // Show modal after a short delay to not interrupt startup
+      setTimeout(() => showUpdateModal(), 2000);
+    }
+  } catch (e) {
+    console.log('Could not check for updates:', e);
+  }
+}
+
+function showUpdateIndicator() {
+  const indicator = document.getElementById('update-indicator');
+  if (indicator) {
+    indicator.classList.remove('hidden');
+  }
+}
+
+function hideUpdateIndicator() {
+  const indicator = document.getElementById('update-indicator');
+  if (indicator) {
+    indicator.classList.add('hidden');
+  }
+}
+
+function showUpdateModal() {
+  if (!currentUpdateInfo) return;
+
+  const modal = document.getElementById('update-modal');
+  if (!modal) return;
+
+  // Populate version info
+  document.getElementById('current-version-display').textContent = `v${currentUpdateInfo.current_version}`;
+  document.getElementById('current-commit-display').textContent = currentUpdateInfo.current_commit;
+  document.getElementById('new-version-display').textContent = `v${currentUpdateInfo.current_version}+`;
+  document.getElementById('new-commit-display').textContent = currentUpdateInfo.latest_commit_short;
+
+  // Populate changelog
+  const changelogList = document.getElementById('changelog-list');
+  changelogList.innerHTML = '';
+
+  if (currentUpdateInfo.changes && currentUpdateInfo.changes.length > 0) {
+    currentUpdateInfo.changes.forEach(change => {
+      const item = document.createElement('div');
+      item.className = 'changelog-item';
+      item.innerHTML = `
+        <span class="commit-sha">${change.sha}</span>
+        <div class="commit-details">
+          <p class="commit-message">${escapeHtml(change.message)}</p>
+          <span class="commit-meta">${change.author} - ${change.date}</span>
+        </div>
+      `;
+      changelogList.appendChild(item);
+    });
+  } else {
+    changelogList.innerHTML = '<p style="color: var(--text-dim); font-size: 0.85rem;">No hay detalles disponibles</p>';
+  }
+
+  modal.classList.add('active');
+  hideUpdateIndicator();
+}
+
+function closeUpdateModal() {
+  const modal = document.getElementById('update-modal');
+  if (modal) {
+    modal.classList.remove('active');
+  }
+  // Show indicator again so user can access it later
+  if (currentUpdateInfo && currentUpdateInfo.available) {
+    showUpdateIndicator();
+  }
+}
+
+function skipUpdate() {
+  if (currentUpdateInfo) {
+    skippedVersion = currentUpdateInfo.latest_commit;
+    localStorage.setItem('skippedVersion', skippedVersion);
+    showToast('Esta versión será omitida');
+  }
+  closeUpdateModal();
+  hideUpdateIndicator();
+}
+
+async function performUpdate() {
+  try {
+    showToast('Iniciando actualización...');
+    const result = await invoke('install_update');
+    showToast(result);
+    // Close modal
+    closeUpdateModal();
+    // The app will be closed by the update script
+  } catch (e) {
+    console.error('Update failed:', e);
+    showToast('Error al actualizar: ' + e);
+  }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Add click handler for update modal background
+document.addEventListener('DOMContentLoaded', () => {
+  const updateModal = document.getElementById('update-modal');
+  if (updateModal) {
+    updateModal.addEventListener('click', (e) => {
+      if (e.target.id === 'update-modal') closeUpdateModal();
+    });
+  }
+
+  // Check for updates after app initialization (with delay)
+  setTimeout(checkForUpdates, 3000);
+
+  // Check for updates every 30 minutes
+  setInterval(checkForUpdates, 30 * 60 * 1000);
+});
