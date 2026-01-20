@@ -95,11 +95,31 @@ setup_common() {
         sudo udevadm control --reload-rules
         sudo udevadm trigger
     fi
-    
+
     print_step "Configurando ydotool..."
+    # Crear servicio ydotoold si no existe
+    SERVICE_FILE="/etc/systemd/system/ydotoold.service"
+    if [ ! -f "$SERVICE_FILE" ] && [ ! -f "/usr/lib/systemd/system/ydotoold.service" ]; then
+        print_warning "Creando servicio ydotoold.service..."
+        sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
+[Unit]
+Description=ydotoold - ydotool daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+YDOTOOL_EOF
+        sudo systemctl daemon-reload
+    fi
+
     sudo systemctl enable ydotoold.service 2>/dev/null || true
     sudo systemctl start ydotoold.service 2>/dev/null || true
-    
+
     if ! groups | grep -q input; then
         sudo usermod -aG input "$USER"
         print_warning "Necesitarás cerrar sesión para que funcionen los hotkeys"
