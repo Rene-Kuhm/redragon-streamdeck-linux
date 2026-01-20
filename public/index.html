@@ -61,6 +61,13 @@
         <input type="range" id="brightness" min="0" max="100" value="50" onchange="setBrightness(this.value)">
         <span id="brightness-value">50</span>%
       </label>
+      <button onclick="confirmReset()" class="btn-reset" title="Borrar toda la configuración y empezar de cero">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+        Reset
+      </button>
     </div>
 
     <!-- Selector de páginas -->
@@ -156,8 +163,13 @@
             </svg>
             Comando
           </label>
-          <input type="text" id="edit-command" placeholder="ej: firefox, __NEXT_PAGE__, __PREV_PAGE__">
-          <small>Usa __NEXT_PAGE__, __PREV_PAGE__ o __PAGE_X__ para navegación</small>
+          <div class="command-input-group">
+            <input type="text" id="edit-command" placeholder="ej: firefox, __NEXT_PAGE__">
+            <select id="preset-commands" onchange="applyPreset(this)">
+              <option value="">-- Comandos rápidos --</option>
+            </select>
+          </div>
+          <small>Selecciona un preset o escribe tu propio comando</small>
         </div>
 
         <div class="form-group">
@@ -179,12 +191,19 @@
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <polyline points="21 15 16 10 5 21"/>
             </svg>
-            Icono (256x256)
+            Icono
           </label>
           <div class="icon-upload">
             <div id="icon-preview" class="icon-preview"></div>
             <div class="icon-actions">
-              <input type="file" id="edit-icon" accept="image/*" onchange="previewIcon(this)">
+              <button onclick="browseIcon()" class="btn-primary btn-small">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Buscar imagen
+              </button>
               <button onclick="removeIcon()" class="btn-secondary btn-small">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
@@ -194,6 +213,7 @@
               </button>
             </div>
           </div>
+          <input type="hidden" id="edit-icon-path">
         </div>
 
         <div class="modal-actions">
@@ -235,12 +255,19 @@
             </svg>
             Guardar
           </button>
+          <button onclick="clearPageButtons()" class="btn-warning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+            Limpiar botones
+          </button>
           <button onclick="deletePage()" class="btn-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-            Eliminar
+            Eliminar página
           </button>
           <button onclick="closePageModal()" class="btn-secondary">Cancelar</button>
         </div>

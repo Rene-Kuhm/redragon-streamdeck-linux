@@ -5,10 +5,13 @@
 
 // Wait for Tauri API to be available
 let invoke;
+let dialogOpen;
 
 let config = null;
 let currentButtonId = null;
 let editingPageIndex = null;
+let selectedIconPath = null;
+let presetCommands = [];
 
 // ============================================================================
 // Initialization
@@ -25,8 +28,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // Initialize dialog API if available
+  if (window.__TAURI__ && window.__TAURI__.dialog) {
+    dialogOpen = window.__TAURI__.dialog.open;
+  }
+
   try {
     await loadConfig();
+    await loadPresetCommands();
     // Auto-connect on startup
     await autoConnect();
     startButtonListener();
@@ -34,6 +43,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Initialization error:', e);
   }
 });
+
+// ============================================================================
+// Preset Commands
+// ============================================================================
+
+async function loadPresetCommands() {
+  try {
+    presetCommands = await invoke('get_preset_commands');
+    populatePresetDropdown();
+  } catch (e) {
+    console.error('Error loading preset commands:', e);
+  }
+}
+
+function populatePresetDropdown() {
+  const select = document.getElementById('preset-commands');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">-- Comandos rápidos --</option>';
+
+  // Group presets by category
+  const categories = {
+    'Multimedia': presetCommands.filter(p => ['Vol +', 'Vol -', 'Mute', 'Play/Pause', 'Next', 'Prev'].includes(p[0])),
+    'Aplicaciones': presetCommands.filter(p => ['Firefox', 'Chrome', 'Terminal', 'Files', 'VS Code', 'Discord', 'Spotify', 'Steam', 'OBS'].includes(p[0])),
+    'Workspaces': presetCommands.filter(p => p[0].startsWith('WS ')),
+    'Sistema': presetCommands.filter(p => ['Screenshot', 'Lock', 'Suspend'].includes(p[0])),
+    'Navegación': presetCommands.filter(p => ['>> Next', '<< Prev', 'Home'].includes(p[0])),
+  };
+
+  for (const [category, items] of Object.entries(categories)) {
+    if (items.length === 0) continue;
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = category;
+    for (const [label, command, description] of items) {
+      const option = document.createElement('option');
+      option.value = JSON.stringify({ label, command });
+      option.textContent = `${label} - ${description}`;
+      optgroup.appendChild(option);
+    }
+    select.appendChild(optgroup);
+  }
+}
+
+function applyPreset(selectElement) {
+  if (!selectElement.value) return;
+
+  try {
+    const { label, command } = JSON.parse(selectElement.value);
+    document.getElementById('edit-label').value = label;
+    document.getElementById('edit-command').value = command;
+    selectElement.value = ''; // Reset dropdown
+  } catch (e) {
+    console.error('Error applying preset:', e);
+  }
+}
 
 async function autoConnect() {
   try {
@@ -225,7 +289,32 @@ function deletePage() {
 
   const pageName = config.pages[editingPageIndex].name;
   document.getElementById('confirm-message').textContent = `¿Eliminar la página "${pageName}"? Esta acción no se puede deshacer.`;
+  window.pendingAction = 'deletePage';
   document.getElementById('confirm-modal').classList.add('active');
+}
+
+async function clearPageButtons() {
+  if (editingPageIndex === null) return;
+
+  const pageName = config.pages[editingPageIndex].name;
+  document.getElementById('confirm-message').textContent = `¿Limpiar todos los botones de la página "${pageName}"? Los botones volverán a su estado inicial.`;
+  window.pendingAction = 'clearPage';
+  document.getElementById('confirm-modal').classList.add('active');
+}
+
+async function executeClearPage() {
+  if (editingPageIndex === null) return;
+
+  try {
+    await invoke('clear_page_buttons', { pageIndex: editingPageIndex });
+    await loadConfig();
+    closeConfirmModal();
+    closePageModal();
+    showToast('Botones limpiados');
+  } catch (e) {
+    console.error('Error clearing page:', e);
+    showToast('Error al limpiar página');
+  }
 }
 
 function closeConfirmModal() {
@@ -233,6 +322,21 @@ function closeConfirmModal() {
 }
 
 async function confirmDelete() {
+  const action = window.pendingAction;
+  window.pendingAction = null;
+
+  // Handle different actions
+  if (action === 'reset') {
+    await executeReset();
+    return;
+  }
+
+  if (action === 'clearPage') {
+    await executeClearPage();
+    return;
+  }
+
+  // Default: delete page
   if (editingPageIndex === null) return;
 
   const pageName = config.pages[editingPageIndex].name;
@@ -310,6 +414,7 @@ async function setBrightness(value) {
 
 function editButton(id) {
   currentButtonId = id;
+  selectedIconPath = null;
   const page = config.pages[config.currentPage];
   const btn = page.buttons[id] || { label: '', command: '', color: '#1a1a2e', icon: '' };
 
@@ -317,6 +422,7 @@ function editButton(id) {
   document.getElementById('edit-label').value = btn.label || '';
   document.getElementById('edit-command').value = btn.command || '';
   document.getElementById('edit-color').value = btn.color || '#1a1a2e';
+  document.getElementById('edit-icon-path').value = '';
 
   const preview = document.getElementById('icon-preview');
   if (btn.icon) {
@@ -327,8 +433,69 @@ function editButton(id) {
     preview.classList.remove('has-icon');
   }
 
-  document.getElementById('edit-icon').value = '';
+  // Reset preset dropdown
+  const presetSelect = document.getElementById('preset-commands');
+  if (presetSelect) presetSelect.value = '';
+
   document.getElementById('modal').classList.add('active');
+}
+
+// ============================================================================
+// Icon Management
+// ============================================================================
+
+async function browseIcon() {
+  try {
+    // Use Tauri dialog to open file picker
+    if (dialogOpen) {
+      const selected = await dialogOpen({
+        multiple: false,
+        filters: [{
+          name: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp']
+        }]
+      });
+
+      if (selected) {
+        selectedIconPath = selected;
+        // Show preview
+        const preview = document.getElementById('icon-preview');
+        // For preview, we need to convert to a data URL or use asset protocol
+        preview.style.backgroundImage = `url(asset://localhost/${encodeURIComponent(selected)})`;
+        preview.classList.add('has-icon');
+        document.getElementById('edit-icon-path').value = selected;
+        showToast('Imagen seleccionada');
+      }
+    } else {
+      showToast('Selector de archivos no disponible');
+    }
+  } catch (e) {
+    console.error('Error browsing icon:', e);
+    showToast('Error al seleccionar imagen');
+  }
+}
+
+// ============================================================================
+// Reset Configuration
+// ============================================================================
+
+function confirmReset() {
+  document.getElementById('confirm-message').textContent = '¿Borrar TODA la configuración y empezar de cero? Esta acción eliminará todas las páginas, botones e iconos.';
+  document.getElementById('confirm-modal').classList.add('active');
+  // Temporarily change confirmDelete to resetConfig
+  window.pendingAction = 'reset';
+}
+
+async function executeReset() {
+  try {
+    await invoke('reset_config');
+    await loadConfig();
+    showToast('Configuración reiniciada');
+    closeConfirmModal();
+  } catch (e) {
+    console.error('Error resetting config:', e);
+    showToast('Error al reiniciar configuración');
+  }
 }
 
 function closeModal() {
@@ -368,15 +535,25 @@ async function saveButton() {
   const label = document.getElementById('edit-label').value;
   const command = document.getElementById('edit-command').value;
   const color = document.getElementById('edit-color').value;
-  const iconInput = document.getElementById('edit-icon');
+  const iconPath = document.getElementById('edit-icon-path').value;
 
   let icon = config.pages[pageIndex].buttons[currentButtonId]?.icon || '';
 
-  // Handle icon upload (for Tauri, we'd need to copy the file)
-  if (iconInput.files && iconInput.files[0]) {
-    // For now, just use the filename - in production would copy to icons folder
-    icon = `page${pageIndex}_btn${currentButtonId}.png`;
-    // TODO: Copy file to icons directory using Tauri file system API
+  // Handle icon from file picker
+  if (selectedIconPath && iconPath) {
+    try {
+      // Generate a unique name for the icon
+      const iconName = `btn_p${pageIndex}_b${currentButtonId}_${Date.now()}.png`;
+      // Save the icon using Tauri backend
+      icon = await invoke('save_icon', {
+        sourcePath: selectedIconPath,
+        iconName: iconName
+      });
+      showToast('Icono guardado');
+    } catch (e) {
+      console.error('Error saving icon:', e);
+      showToast('Error al guardar icono');
+    }
   }
 
   const buttonConfig = {
@@ -396,8 +573,10 @@ async function saveButton() {
     config.pages[pageIndex].buttons[currentButtonId] = buttonConfig;
     renderButtons();
     closeModal();
+    showToast('Botón guardado');
   } catch (e) {
     console.error('Error saving button:', e);
+    showToast('Error al guardar botón');
   }
 }
 
