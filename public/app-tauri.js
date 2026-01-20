@@ -3,7 +3,8 @@
 // Por Tecnodespegue
 // ============================================================================
 
-const { invoke } = window.__TAURI__.core;
+// Wait for Tauri API to be available
+let invoke;
 
 let config = null;
 let currentButtonId = null;
@@ -14,10 +15,61 @@ let editingPageIndex = null;
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadConfig();
-  await checkStatus();
-  startButtonListener();
+  // Initialize Tauri API
+  if (window.__TAURI__ && window.__TAURI__.core) {
+    invoke = window.__TAURI__.core.invoke;
+    console.log('Tauri API initialized successfully');
+  } else {
+    console.error('Tauri API not available!');
+    document.getElementById('status-text').textContent = 'Error: Tauri API';
+    return;
+  }
+
+  try {
+    await loadConfig();
+    // Auto-connect on startup
+    await autoConnect();
+    startButtonListener();
+  } catch (e) {
+    console.error('Initialization error:', e);
+  }
 });
+
+async function autoConnect() {
+  try {
+    // Check if udev rules are set up
+    const rulesExist = await invoke('check_udev_rules');
+    if (!rulesExist) {
+      // Show notification and try to setup rules
+      showToast('Configurando permisos USB...');
+      try {
+        await invoke('setup_udev_rules');
+        showToast('Permisos USB configurados. Reconectando...');
+        // Wait a moment for udev to apply
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (e) {
+        console.error('Error setting up udev rules:', e);
+      }
+    }
+
+    // Try to connect to the device automatically
+    const success = await invoke('connect_device');
+    if (success) {
+      try {
+        await invoke('refresh_device');
+      } catch (e) {
+        console.log('Device refresh warning:', e);
+      }
+      showToast('Stream Deck conectado');
+    } else {
+      showToast('Conecta el Stream Deck y haz clic en Reconectar');
+    }
+    await checkStatus();
+  } catch (e) {
+    console.error('Auto-connect error:', e);
+    await checkStatus();
+  }
+}
 
 // ============================================================================
 // Config Management

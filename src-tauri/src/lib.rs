@@ -381,6 +381,36 @@ fn get_icons_path(state: State<AppState>) -> String {
     state.icons_path.to_string_lossy().to_string()
 }
 
+#[tauri::command]
+fn setup_udev_rules() -> Result<bool, String> {
+    let rules_path = "/etc/udev/rules.d/99-redragon.rules";
+    let rules_content = r#"SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666""#;
+
+    // Check if rules already exist
+    if std::path::Path::new(rules_path).exists() {
+        return Ok(true);
+    }
+
+    // Try to create rules using pkexec
+    let result = Command::new("pkexec")
+        .args(["bash", "-c", &format!(
+            "echo '{}' > {} && udevadm control --reload-rules && udevadm trigger",
+            rules_content,
+            rules_path
+        )])
+        .status();
+
+    match result {
+        Ok(status) => Ok(status.success()),
+        Err(e) => Err(format!("Failed to setup udev rules: {}", e)),
+    }
+}
+
+#[tauri::command]
+fn check_udev_rules() -> bool {
+    std::path::Path::new("/etc/udev/rules.d/99-redragon.rules").exists()
+}
+
 // ============================================================================
 // Tauri App Entry Point
 // ============================================================================
@@ -412,6 +442,8 @@ pub fn run() {
             run_command,
             refresh_device,
             get_icons_path,
+            setup_udev_rules,
+            check_udev_rules,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -7,6 +7,7 @@
     "frontendDist": "../public"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Redragon Stream Deck - por Tecnodespegue",
