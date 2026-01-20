@@ -1,0 +1,46 @@
+{
+  "brightness": 50,
+  "currentPage": 0,
+  "pages": [
+    {
+      "name": "Principal",
+      "buttons": {
+        "1": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "2": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "3": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "4": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "5": { "label": ">>", "command": "__NEXT_PAGE__", "color": "#e94560", "icon": "" },
+        "6": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "7": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "8": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "9": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "10": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "11": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "12": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "13": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "14": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "15": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" }
+      }
+    },
+    {
+      "name": "Página 2",
+      "buttons": {
+        "1": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "2": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "3": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "4": { "label": "<<", "command": "__PREV_PAGE__", "color": "#e94560", "icon": "" },
+        "5": { "label": ">>", "command": "__NEXT_PAGE__", "color": "#e94560", "icon": "" },
+        "6": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "7": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "8": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "9": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "10": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "11": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "12": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "13": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "14": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" },
+        "15": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" }
+      }
+    }
+  ]
+}
