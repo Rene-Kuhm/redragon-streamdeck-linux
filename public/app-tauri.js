@@ -246,7 +246,7 @@ async function setBrightness(value) {
   config.brightness = parseInt(value);
 
   try {
-    await invoke('set_brightness_cmd', { brightness: parseInt(value) });
+    await invoke('set_brightness_level', { brightness: parseInt(value) });
   } catch (e) {
     console.error('Error setting brightness:', e);
   }
