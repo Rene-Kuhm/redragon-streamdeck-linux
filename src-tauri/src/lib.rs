@@ -2883,6 +2883,255 @@ fn reload_hotkeys(state: State<AppState>) -> Result<(), String> {
 }
 
 // ============================================================================
+// Auto-Update System
+// ============================================================================
+
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const GITHUB_REPO: &str = "Rene-Kuhm/redragon-streamdeck-linux-";
+const CURRENT_COMMIT: &str = "53ab1fafebf8e988c3ddae76b4f1f1228d689a12";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub available: bool,
+    pub current_version: String,
+    pub current_commit: String,
+    pub latest_commit: String,
+    pub latest_commit_short: String,
+    pub changes: Vec<CommitInfo>,
+    pub update_date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+}
+
+#[tauri::command]
+async fn check_for_updates() -> Result<UpdateInfo, String> {
+    eprintln!("DEBUG: Checking for updates...");
+
+    // Get latest commits from GitHub API
+    let url = format!(
+        "https://api.github.com/repos/{}/commits?per_page=10",
+        GITHUB_REPO
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("RedragonStreamDeck/2.0")
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .send()
+        .map_err(|e| format!("Failed to fetch updates: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API error: {}", response.status()));
+    }
+
+    let commits: Vec<serde_json::Value> = response
+        .json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    if commits.is_empty() {
+        return Ok(UpdateInfo {
+            available: false,
+            current_version: CURRENT_VERSION.to_string(),
+            current_commit: CURRENT_COMMIT.to_string(),
+            latest_commit: CURRENT_COMMIT.to_string(),
+            latest_commit_short: CURRENT_COMMIT[..7].to_string(),
+            changes: vec![],
+            update_date: String::new(),
+        });
+    }
+
+    let latest_commit = commits[0]["sha"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    let available = latest_commit != CURRENT_COMMIT;
+
+    // Collect changes (commits since current version)
+    let mut changes: Vec<CommitInfo> = Vec::new();
+    for commit in &commits {
+        let sha = commit["sha"].as_str().unwrap_or("").to_string();
+        if sha == CURRENT_COMMIT {
+            break; // Stop at current version
+        }
+
+        let message = commit["commit"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+
+        let author = commit["commit"]["author"]["name"]
+            .as_str()
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let date = commit["commit"]["author"]["date"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        // Format date nicely
+        let formatted_date = if date.len() >= 10 {
+            date[..10].to_string()
+        } else {
+            date.clone()
+        };
+
+        changes.push(CommitInfo {
+            sha: sha[..7.min(sha.len())].to_string(),
+            message,
+            author,
+            date: formatted_date,
+        });
+    }
+
+    let update_date = if !changes.is_empty() {
+        changes[0].date.clone()
+    } else {
+        String::new()
+    };
+
+    eprintln!("DEBUG: Update available: {}, changes: {}", available, changes.len());
+
+    Ok(UpdateInfo {
+        available,
+        current_version: CURRENT_VERSION.to_string(),
+        current_commit: CURRENT_COMMIT[..7].to_string(),
+        latest_commit: latest_commit.clone(),
+        latest_commit_short: latest_commit[..7.min(latest_commit.len())].to_string(),
+        changes,
+        update_date,
+    })
+}
+
+#[tauri::command]
+async fn install_update() -> Result<String, String> {
+    eprintln!("DEBUG: Starting update installation...");
+
+    // Get the directory where the app is located
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+    let app_dir = exe_path.parent()
+        .ok_or("Failed to get app directory")?;
+
+    // Create update script
+    let update_script = format!(r#"#!/bin/bash
+set -e
+
+REPO_URL="https://github.com/{}.git"
+TEMP_DIR=$(mktemp -d)
+APP_DIR="{}"
+
+echo "=== Actualizando Redragon Stream Deck ==="
+echo ""
+
+# Clone or pull the latest version
+echo "[1/4] Descargando última versión..."
+git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo" 2>/dev/null || {{
+    echo "Error al clonar repositorio"
+    rm -rf "$TEMP_DIR"
+    exit 1
+}}
+
+cd "$TEMP_DIR/repo"
+
+# Build the application
+echo "[2/4] Compilando aplicación..."
+if ! cargo build --release --manifest-path src-tauri/Cargo.toml 2>/dev/null; then
+    echo "Error al compilar"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Stop running instances
+echo "[3/4] Deteniendo instancias anteriores..."
+pkill -f redragon-streamdeck 2>/dev/null || true
+sleep 1
+
+# Install the new binary
+echo "[4/4] Instalando actualización..."
+sudo cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" /usr/local/bin/ 2>/dev/null || \
+    cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" "$APP_DIR/" 2>/dev/null || {{
+    echo "No se pudo instalar. Copiando a directorio temporal..."
+    cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" "/tmp/redragon-streamdeck-new"
+    echo "El nuevo binario está en: /tmp/redragon-streamdeck-new"
+    echo "Ejecútalo manualmente o cópialo a /usr/local/bin/"
+}}
+
+# Cleanup
+rm -rf "$TEMP_DIR"
+
+echo ""
+echo "=== Actualización completada ==="
+echo "Reinicia la aplicación para aplicar los cambios."
+"#, GITHUB_REPO, app_dir.display());
+
+    // Save script to temp file
+    let script_path = std::env::temp_dir().join("redragon-update.sh");
+    fs::write(&script_path, &update_script)
+        .map_err(|e| format!("Failed to write update script: {}", e))?;
+
+    // Make it executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set script permissions: {}", e))?;
+    }
+
+    // Run the update script in a terminal
+    let terminals = ["foot", "kitty", "alacritty", "gnome-terminal", "konsole", "xterm"];
+    let mut success = false;
+
+    for terminal in &terminals {
+        let result = if *terminal == "gnome-terminal" || *terminal == "konsole" {
+            Command::new(terminal)
+                .args(["--", "bash", script_path.to_str().unwrap()])
+                .spawn()
+        } else {
+            Command::new(terminal)
+                .args(["-e", "bash", script_path.to_str().unwrap()])
+                .spawn()
+        };
+
+        if result.is_ok() {
+            success = true;
+            eprintln!("DEBUG: Update started in {}", terminal);
+            break;
+        }
+    }
+
+    if !success {
+        // Fallback: run in background and notify
+        Command::new("bash")
+            .arg(&script_path)
+            .spawn()
+            .map_err(|e| format!("Failed to start update: {}", e))?;
+    }
+
+    Ok("Actualización iniciada. La aplicación se cerrará para completar la instalación.".to_string())
+}
+
+#[tauri::command]
+fn get_current_version() -> (String, String) {
+    (CURRENT_VERSION.to_string(), CURRENT_COMMIT[..7].to_string())
+}
+
+// ============================================================================
 // Tauri App Entry Point
 // ============================================================================
 
@@ -2944,6 +3193,10 @@ pub fn run() {
             unregister_hotkey,
             get_registered_hotkeys,
             reload_hotkeys,
+            // Update commands
+            check_for_updates,
+            install_update,
+            get_current_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
