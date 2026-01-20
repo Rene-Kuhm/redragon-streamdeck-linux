@@ -9,6 +9,12 @@
     "shell:allow-spawn",
     "shell:default",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "fs:default",
+    "fs:allow-read",
+    {
+      "identifier": "fs:scope",
+      "allow": ["$APPDATA/**", "$RESOURCE/**"]
+    }
   ]
 }

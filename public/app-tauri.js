@@ -180,19 +180,33 @@ function renderButtons() {
     el.innerHTML = '';
 
     if (btn.icon) {
-      el.style.backgroundImage = `url(icons/${btn.icon}?t=${Date.now()})`;
-      el.classList.add('has-icon');
-      if (btn.label) {
-        const labelEl = document.createElement('span');
-        labelEl.className = 'button-label';
-        labelEl.textContent = btn.label;
-        el.appendChild(labelEl);
-      }
+      // Load icon as base64 data URL
+      loadButtonIcon(el, btn.icon, btn.label);
     } else {
       el.style.backgroundImage = 'none';
       el.classList.remove('has-icon');
       el.textContent = btn.label || '';
     }
+  }
+}
+
+// Helper function to load button icon as base64
+async function loadButtonIcon(el, iconFilename, label) {
+  try {
+    const dataUrl = await invoke('get_icon_data', { filename: iconFilename });
+    el.style.backgroundImage = `url('${dataUrl}')`;
+    el.classList.add('has-icon');
+    if (label) {
+      const labelEl = document.createElement('span');
+      labelEl.className = 'button-label';
+      labelEl.textContent = label;
+      el.appendChild(labelEl);
+    }
+  } catch (e) {
+    console.error('Error loading icon:', iconFilename, e);
+    el.style.backgroundImage = 'none';
+    el.classList.remove('has-icon');
+    el.textContent = label || '';
   }
 }
 
@@ -206,6 +220,13 @@ async function switchPage(index) {
     config.currentPage = index;
     renderPageTabs();
     renderButtons();
+
+    // Load the page on the device
+    try {
+      await invoke('load_current_page');
+    } catch (e) {
+      console.log('Could not update device:', e);
+    }
   } catch (e) {
     console.error('Error switching page:', e);
   }
@@ -426,8 +447,17 @@ function editButton(id) {
 
   const preview = document.getElementById('icon-preview');
   if (btn.icon) {
-    preview.style.backgroundImage = `url(icons/${btn.icon}?t=${Date.now()})`;
-    preview.classList.add('has-icon');
+    // Load icon as base64 data URL
+    invoke('get_icon_data', { filename: btn.icon })
+      .then(dataUrl => {
+        preview.style.backgroundImage = `url('${dataUrl}')`;
+        preview.classList.add('has-icon');
+      })
+      .catch(e => {
+        console.error('Error loading icon preview:', e);
+        preview.style.backgroundImage = 'none';
+        preview.classList.remove('has-icon');
+      });
   } else {
     preview.style.backgroundImage = 'none';
     preview.classList.remove('has-icon');
@@ -574,6 +604,13 @@ async function saveButton() {
     renderButtons();
     closeModal();
     showToast('Botón guardado');
+
+    // Reload the current page on the device to show the new button
+    try {
+      await invoke('load_current_page');
+    } catch (e) {
+      console.log('Could not update device:', e);
+    }
   } catch (e) {
     console.error('Error saving button:', e);
     showToast('Error al guardar botón');
