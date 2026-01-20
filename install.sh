@@ -1,255 +1,250 @@
 #!/bin/bash
 
-#═══════════════════════════════════════════════════════════════════════════════
-#  Redragon Stream Deck Linux - Instalador Automático
-#  Por Tecnodespegue
-#═══════════════════════════════════════════════════════════════════════════════
+# =============================================================================
+# Redragon Stream Deck Manager - Instalador para Arch Linux
+# =============================================================================
 
 set -e
 
-# Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Directorio del proyecto
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_NAME="redragon-streamdeck"
-
-#───────────────────────────────────────────────────────────────────────────────
-print_banner() {
-    echo -e "${PURPLE}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                                                               ║"
-    echo "║   ██████╗ ███████╗██████╗ ██████╗  █████╗  ██████╗  ██████╗  ║"
-    echo "║   ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝ ██╔═══██╗ ║"
-    echo "║   ██████╔╝█████╗  ██║  ██║██████╔╝███████║██║  ███╗██║   ██║ ║"
-    echo "║   ██╔══██╗██╔══╝  ██║  ██║██╔══██╗██╔══██║██║   ██║██║   ██║ ║"
-    echo "║   ██║  ██║███████╗██████╔╝██║  ██║██║  ██║╚██████╔╝╚██████╔╝ ║"
-    echo "║   ╚═╝  ╚═╝╚══════╝╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝  ║"
-    echo "║                                                               ║"
-    echo "║              STREAM DECK LINUX - INSTALADOR                   ║"
-    echo "║                   Por Tecnodespegue                           ║"
-    echo "║                                                               ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
+print_header() {
+    echo -e "${BLUE}"
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║     Redragon Stream Deck Manager - Instalador Arch Linux     ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
 print_step() {
-    echo -e "\n${CYAN}▶ $1${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}[+]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}[!]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}[✗]${NC} $1"
 }
 
-#───────────────────────────────────────────────────────────────────────────────
-check_root() {
-    if [ "$EUID" -eq 0 ]; then
-        print_error "No ejecutes este script como root. Se pedirá sudo cuando sea necesario."
+print_success() {
+    echo -e "${GREEN}[✓]${NC} $1"
+}
+
+# Verificar que estamos en Arch Linux
+check_arch() {
+    if [ ! -f /etc/arch-release ]; then
+        print_error "Este instalador es solo para Arch Linux"
+        print_warning "Para otras distros, consulta INSTALL_ARCH.md para instrucciones manuales"
         exit 1
     fi
 }
 
-#───────────────────────────────────────────────────────────────────────────────
-detect_distro() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        DISTRO=$ID
-    elif [ -f /etc/arch-release ]; then
-        DISTRO="arch"
-    elif [ -f /etc/debian_version ]; then
-        DISTRO="debian"
-    else
-        DISTRO="unknown"
-    fi
-    echo $DISTRO
-}
-
-#───────────────────────────────────────────────────────────────────────────────
+# Instalar dependencias
 install_dependencies() {
     print_step "Instalando dependencias del sistema..."
 
-    DISTRO=$(detect_distro)
+    DEPS="webkit2gtk gtk3 libusb openssl glib2 base-devel ydotool playerctl"
 
-    case $DISTRO in
-        arch|cachyos|endeavouros|manjaro)
-            print_step "Detectado: Arch Linux / $DISTRO"
-            sudo pacman -S --needed --noconfirm nodejs npm imagemagick libusb
-            ;;
-        debian|ubuntu|linuxmint|pop)
-            print_step "Detectado: Debian / Ubuntu"
-            sudo apt update
-            sudo apt install -y nodejs npm imagemagick libusb-1.0-0-dev libudev-dev
-            ;;
-        fedora)
-            print_step "Detectado: Fedora"
-            sudo dnf install -y nodejs npm ImageMagick libusb1-devel systemd-devel
-            ;;
-        opensuse*)
-            print_step "Detectado: openSUSE"
-            sudo zypper install -y nodejs npm ImageMagick libusb-1_0-devel
-            ;;
-        *)
-            print_warning "Distribución no reconocida: $DISTRO"
-            print_warning "Instala manualmente: nodejs, npm, imagemagick, libusb"
-            read -p "¿Continuar de todos modos? (s/n): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-                exit 1
-            fi
-            ;;
-    esac
+    # Verificar cuáles ya están instaladas
+    MISSING=""
+    for pkg in $DEPS; do
+        if ! pacman -Qi "$pkg" &>/dev/null; then
+            MISSING="$MISSING $pkg"
+        fi
+    done
 
-    print_success "Dependencias del sistema instaladas"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-setup_udev_rules() {
-    print_step "Configurando reglas udev para acceso USB..."
-
-    UDEV_RULE='SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess"'
-    UDEV_FILE="/etc/udev/rules.d/99-redragon-streamdeck.rules"
-
-    echo "$UDEV_RULE" | sudo tee $UDEV_FILE > /dev/null
-
-    sudo udevadm control --reload-rules
-    sudo udevadm trigger
-
-    print_success "Reglas udev configuradas"
-    print_warning "Si el Stream Deck está conectado, desconéctalo y vuélvelo a conectar"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-install_npm_dependencies() {
-    print_step "Instalando dependencias de Node.js..."
-
-    cd "$SCRIPT_DIR"
-    npm install
-
-    print_success "Dependencias de Node.js instaladas"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-setup_config() {
-    print_step "Configurando archivo de configuración..."
-
-    if [ ! -f "$SCRIPT_DIR/config.json" ]; then
-        cp "$SCRIPT_DIR/config.example.json" "$SCRIPT_DIR/config.json"
-        print_success "Archivo config.json creado"
+    if [ -n "$MISSING" ]; then
+        echo -e "  Instalando:$MISSING"
+        sudo pacman -S --needed --noconfirm $MISSING
     else
-        print_warning "config.json ya existe, no se sobrescribirá"
+        print_success "Todas las dependencias ya están instaladas"
+    fi
+}
+
+# Configurar ydotool
+setup_ydotool() {
+    print_step "Configurando ydotool para hotkeys..."
+
+    # Habilitar servicio
+    if ! systemctl is-enabled ydotoold.service &>/dev/null; then
+        sudo systemctl enable ydotoold.service
     fi
 
-    # Crear directorio de iconos si no existe
-    mkdir -p "$SCRIPT_DIR/icons"
+    if ! systemctl is-active ydotoold.service &>/dev/null; then
+        sudo systemctl start ydotoold.service
+    fi
+
+    # Agregar usuario al grupo input
+    if ! groups | grep -q input; then
+        print_warning "Agregando usuario al grupo 'input'..."
+        sudo usermod -aG input "$USER"
+        print_warning "Necesitarás cerrar sesión y volver a iniciar para que los hotkeys funcionen"
+    fi
+
+    print_success "ydotool configurado"
 }
 
-#───────────────────────────────────────────────────────────────────────────────
-setup_systemd_service() {
-    print_step "Configurando servicio systemd para auto-inicio..."
+# Configurar reglas udev
+setup_udev() {
+    print_step "Configurando reglas udev para el dispositivo USB..."
 
-    SERVICE_DIR="$HOME/.config/systemd/user"
-    SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
+    RULES_FILE="/etc/udev/rules.d/99-redragon-streamdeck.rules"
+    RULES_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess"'
 
-    mkdir -p "$SERVICE_DIR"
+    if [ ! -f "$RULES_FILE" ]; then
+        echo "$RULES_CONTENT" | sudo tee "$RULES_FILE" > /dev/null
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+        print_success "Reglas udev instaladas"
+        print_warning "Desconecta y reconecta el Stream Deck"
+    else
+        print_success "Reglas udev ya existen"
+    fi
+}
 
-    cat > "$SERVICE_FILE" << EOF
+# Verificar/instalar Rust
+check_rust() {
+    print_step "Verificando Rust..."
+
+    if ! command -v cargo &>/dev/null; then
+        print_warning "Rust no está instalado. Instalando..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+    fi
+
+    print_success "Rust $(cargo --version | cut -d' ' -f2) disponible"
+}
+
+# Compilar la aplicación
+build_app() {
+    print_step "Compilando la aplicación (esto puede tardar unos minutos)..."
+
+    cargo build --release --manifest-path src-tauri/Cargo.toml
+
+    if [ -f "src-tauri/target/release/redragon-streamdeck" ]; then
+        print_success "Compilación exitosa"
+    else
+        print_error "Error en la compilación"
+        exit 1
+    fi
+}
+
+# Instalar la aplicación
+install_app() {
+    print_step "Instalando la aplicación..."
+
+    # Copiar binario
+    sudo cp src-tauri/target/release/redragon-streamdeck /usr/local/bin/
+    sudo chmod +x /usr/local/bin/redragon-streamdeck
+
+    # Crear directorio de datos
+    mkdir -p ~/.local/share/redragon-streamdeck
+
+    # Crear entrada de escritorio
+    mkdir -p ~/.local/share/applications
+    cat > ~/.local/share/applications/redragon-streamdeck.desktop << 'EOF'
+[Desktop Entry]
+Name=Redragon Stream Deck
+Comment=Control your Redragon SS-550 Stream Deck
+Exec=redragon-streamdeck
+Icon=input-gaming
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;
+Keywords=stream;deck;obs;twitch;
+EOF
+
+    # Actualizar base de datos de aplicaciones
+    update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+
+    print_success "Aplicación instalada en /usr/local/bin/redragon-streamdeck"
+}
+
+# Configuración opcional de auto-inicio
+setup_autostart() {
+    echo ""
+    read -p "¿Deseas que la aplicación inicie automáticamente? [y/N] " -n 1 -r
+    echo
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_step "Configurando auto-inicio..."
+
+        mkdir -p ~/.config/systemd/user
+
+        cat > ~/.config/systemd/user/redragon-streamdeck.service << 'EOF'
 [Unit]
 Description=Redragon Stream Deck Manager
 After=graphical-session.target
 
 [Service]
 Type=simple
-WorkingDirectory=$SCRIPT_DIR
-ExecStart=/usr/bin/node $SCRIPT_DIR/node_modules/.bin/tsx src/server.ts
+ExecStart=/usr/local/bin/redragon-streamdeck
 Restart=on-failure
 RestartSec=5
-Environment=NODE_ENV=production
+Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target
 EOF
 
-    systemctl --user daemon-reload
-    systemctl --user enable $SERVICE_NAME.service
+        systemctl --user daemon-reload
+        systemctl --user enable redragon-streamdeck.service
 
-    print_success "Servicio systemd configurado y habilitado"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-start_service() {
-    print_step "Iniciando servicio..."
-
-    systemctl --user start $SERVICE_NAME.service
-    sleep 2
-
-    if systemctl --user is-active --quiet $SERVICE_NAME.service; then
-        print_success "Servicio iniciado correctamente"
-    else
-        print_error "Error al iniciar el servicio"
-        echo "Revisa los logs con: journalctl --user -u $SERVICE_NAME.service -f"
-        exit 1
+        print_success "Auto-inicio configurado"
+        print_warning "El servicio iniciará en el próximo login"
     fi
 }
 
-#───────────────────────────────────────────────────────────────────────────────
-print_final_message() {
-    echo -e "\n${GREEN}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                                                               ║"
-    echo "║              ¡INSTALACIÓN COMPLETADA!                         ║"
-    echo "║                                                               ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+# Mostrar resumen final
+show_summary() {
+    echo ""
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              ¡Instalación Completada!                        ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Para ejecutar la aplicación:"
+    echo -e "  ${BLUE}redragon-streamdeck${NC}"
+    echo ""
+    echo "O búscala en el menú de aplicaciones como 'Redragon Stream Deck'"
+    echo ""
+    echo "Comandos especiales disponibles:"
+    echo "  - Widgets: __CLOCK__, __CPU__, __RAM__, __TEMP__"
+    echo "  - OBS: __OBS_STREAM__, __OBS_RECORD__, __OBS_SCENE_nombre"
+    echo "  - Twitch: __TWITCH_VIEWERS__, __TWITCH_CLIP__"
+    echo ""
+    echo "Para más información, consulta:"
+    echo "  - CLAUDE.md (lista completa de comandos)"
+    echo "  - INSTALL_ARCH.md (configuración de OBS/Twitch)"
+    echo ""
 
-    echo -e "${CYAN}Accede a la interfaz web en:${NC}"
-    echo -e "${YELLOW}    http://localhost:3000${NC}"
-    echo ""
-    echo -e "${CYAN}Comandos útiles:${NC}"
-    echo -e "    ${YELLOW}Ver estado:${NC}     systemctl --user status $SERVICE_NAME"
-    echo -e "    ${YELLOW}Ver logs:${NC}       journalctl --user -u $SERVICE_NAME -f"
-    echo -e "    ${YELLOW}Reiniciar:${NC}      systemctl --user restart $SERVICE_NAME"
-    echo -e "    ${YELLOW}Detener:${NC}        systemctl --user stop $SERVICE_NAME"
-    echo ""
-    echo -e "${PURPLE}¡Disfruta tu Stream Deck! - Tecnodespegue${NC}"
-    echo ""
+    if ! groups | grep -q input; then
+        echo -e "${YELLOW}⚠ IMPORTANTE: Cierra sesión y vuelve a iniciar para que los hotkeys funcionen${NC}"
+        echo ""
+    fi
 }
 
-#───────────────────────────────────────────────────────────────────────────────
-# MAIN
-#───────────────────────────────────────────────────────────────────────────────
+# Main
+main() {
+    print_header
 
-print_banner
-check_root
+    check_arch
+    install_dependencies
+    setup_ydotool
+    setup_udev
+    check_rust
+    build_app
+    install_app
+    setup_autostart
+    show_summary
+}
 
-echo -e "${YELLOW}Este script instalará y configurará el Redragon Stream Deck.${NC}"
-echo -e "${YELLOW}Se requerirá tu contraseña de sudo para algunas operaciones.${NC}"
-echo ""
-read -p "¿Continuar con la instalación? (s/n): " -n 1 -r
-echo ""
-
-if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-    echo "Instalación cancelada."
-    exit 0
+# Ejecutar si no se está sourcing
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
 fi
-
-install_dependencies
-setup_udev_rules
-install_npm_dependencies
-setup_config
-setup_systemd_service
-start_service
-print_final_message

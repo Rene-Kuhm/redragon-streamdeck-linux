@@ -1,69 +1,59 @@
 #!/bin/bash
 
-#═══════════════════════════════════════════════════════════════════════════════
-#  Redragon Stream Deck Linux - Desinstalador
-#  Por Tecnodespegue
-#═══════════════════════════════════════════════════════════════════════════════
+# =============================================================================
+# Redragon Stream Deck Manager - Desinstalador
+# =============================================================================
 
-# Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
 NC='\033[0m'
 
-SERVICE_NAME="redragon-streamdeck"
-
-echo -e "${RED}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║         DESINSTALAR REDRAGON STREAM DECK                      ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
+echo -e "${YELLOW}"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║        Redragon Stream Deck Manager - Desinstalador          ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${YELLOW}Esto eliminará:${NC}"
-echo "  - Servicio systemd"
-echo "  - Reglas udev"
-echo ""
-echo -e "${CYAN}NO se eliminará:${NC}"
-echo "  - El directorio del proyecto"
-echo "  - Tu configuración (config.json)"
-echo "  - Tus iconos"
-echo ""
+read -p "¿Estás seguro de que deseas desinstalar? [y/N] " -n 1 -r
+echo
 
-read -p "¿Continuar con la desinstalación? (s/n): " -n 1 -r
-echo ""
-
-if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-    echo "Desinstalación cancelada."
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Cancelado."
     exit 0
 fi
 
-# Detener y deshabilitar servicio
-echo -e "\n${CYAN}▶ Deteniendo servicio...${NC}"
-systemctl --user stop $SERVICE_NAME.service 2>/dev/null || true
-systemctl --user disable $SERVICE_NAME.service 2>/dev/null || true
+echo -e "${GREEN}[+]${NC} Deteniendo servicios..."
+systemctl --user stop redragon-streamdeck.service 2>/dev/null || true
+systemctl --user disable redragon-streamdeck.service 2>/dev/null || true
 
-# Eliminar archivo de servicio
-SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.service"
-if [ -f "$SERVICE_FILE" ]; then
-    rm "$SERVICE_FILE"
-    systemctl --user daemon-reload
-    echo -e "${GREEN}✓ Servicio eliminado${NC}"
+echo -e "${GREEN}[+]${NC} Eliminando binario..."
+sudo rm -f /usr/local/bin/redragon-streamdeck
+
+echo -e "${GREEN}[+]${NC} Eliminando entrada de escritorio..."
+rm -f ~/.local/share/applications/redragon-streamdeck.desktop
+
+echo -e "${GREEN}[+]${NC} Eliminando servicio systemd..."
+rm -f ~/.config/systemd/user/redragon-streamdeck.service
+systemctl --user daemon-reload 2>/dev/null || true
+
+read -p "¿Eliminar configuración y datos? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo -e "${GREEN}[+]${NC} Eliminando configuración..."
+    rm -rf ~/.local/share/redragon-streamdeck
+    rm -rf ~/.config/redragon-streamdeck
 fi
 
-# Eliminar reglas udev
-echo -e "\n${CYAN}▶ Eliminando reglas udev...${NC}"
-UDEV_FILE="/etc/udev/rules.d/99-redragon-streamdeck.rules"
-if [ -f "$UDEV_FILE" ]; then
-    sudo rm "$UDEV_FILE"
+read -p "¿Eliminar reglas udev? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo -e "${GREEN}[+]${NC} Eliminando reglas udev..."
+    sudo rm -f /etc/udev/rules.d/99-redragon-streamdeck.rules
     sudo udevadm control --reload-rules
-    echo -e "${GREEN}✓ Reglas udev eliminadas${NC}"
 fi
 
-echo -e "\n${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║              DESINSTALACIÓN COMPLETADA                        ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Para eliminar completamente el proyecto, ejecuta:"
-echo -e "${YELLOW}  rm -rf $(pwd)${NC}"
-echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║              Desinstalación Completada                       ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
