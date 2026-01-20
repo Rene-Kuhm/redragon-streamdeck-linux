@@ -2888,7 +2888,7 @@ fn reload_hotkeys(state: State<AppState>) -> Result<(), String> {
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "Rene-Kuhm/redragon-streamdeck-linux-";
-const CURRENT_COMMIT: &str = "53ab1fafebf8e988c3ddae76b4f1f1228d689a12";
+const CURRENT_COMMIT: &str = "ea4a09c364eff029afb8bca6bac999c82a789c8e";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
