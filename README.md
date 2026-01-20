@@ -4,196 +4,127 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
 
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-blue)
-![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
+![Tauri](https://img.shields.io/badge/Tauri-2.x-blue)
+![Rust](https://img.shields.io/badge/Rust-1.70+-orange)
 
 ## Características
 
-- Interfaz web moderna para configurar botones
-- Soporte para múltiples páginas/escenas
-- Iconos personalizados (256x256)
+### Funciones Básicas
+- Interfaz gráfica nativa (Tauri/GTK)
+- Soporte para múltiples páginas de botones
+- Iconos personalizados (100x100)
 - Ejecución de comandos del sistema
 - Control de brillo
 - Navegación entre páginas con botones físicos
-- Auto-inicio con systemd
-- Compatible con Hyprland, GNOME, KDE y otros
+- Compatible con Wayland (Hyprland, Sway, GNOME) y X11
 
-## Instalación Rápida (Recomendado)
+### Funciones Avanzadas
+- **URLs**: Abrir páginas web con un botón
+- **Texto**: Escribir texto automáticamente (ydotool)
+- **Hotkeys**: Simular atajos de teclado (Ctrl+C, Alt+Tab, etc.)
+- **Multi-acción**: Secuencias de comandos con delays
+
+### Widgets Dinámicos (actualización automática)
+- **Reloj**: Hora actual (con/sin segundos)
+- **Fecha**: Día, mes, año, día de la semana
+- **Sistema**: CPU%, RAM%, Temperatura
+- **Temporizador**: Cuenta regresiva configurable
+
+### Integraciones de Streaming
+- **OBS Studio** (WebSocket 5.x):
+  - Iniciar/detener streaming y grabación
+  - Cambiar escenas
+  - Mutear/desmutear micrófono
+  - Widget de estado en tiempo real
+- **Twitch API**:
+  - Mostrar viewers y followers en botones
+  - Crear clips con un clic
+  - Correr comerciales
+  - Enviar mensajes al chat
+
+## Instalación en Arch Linux
+
+### Método Rápido
 
 ```bash
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
+git checkout feature/tauri-desktop-app
+chmod +x install.sh
 ./install.sh
 ```
 
-El script automáticamente:
-- Detecta tu distribución (Arch, Debian, Ubuntu, Fedora, openSUSE)
-- Instala todas las dependencias
-- Configura permisos USB (udev)
-- Instala el servicio de auto-inicio
-- Inicia el Stream Deck
+### Método Manual
 
-**¡Listo!** Abre http://localhost:3000 en tu navegador.
-
----
-
-## Instalación Manual
-
-Si prefieres instalar manualmente, sigue estos pasos:
-
-### 1. Clonar el repositorio
-
-```bash
-git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
-cd redragon-streamdeck-linux-
-```
-
-### 2. Instalar dependencias
-
-```bash
-npm install
-```
-
-### 3. Configurar permisos USB
-
-Crear regla udev para acceder al dispositivo sin root:
-
-```bash
-sudo nano /etc/udev/rules.d/99-redragon-streamdeck.rules
-```
-
-Agregar esta línea:
-
-```
-SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666"
-```
-
-Recargar reglas:
-
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-**Importante:** Desconecta y vuelve a conectar el Stream Deck.
-
-### 4. Crear configuración inicial
-
-```bash
-cp config.example.json config.json
-```
-
-### 5. Crear carpeta de iconos
-
-```bash
-mkdir -p icons
-```
-
-### 6. Ejecutar
-
-```bash
-npm start
-```
-
-Abre tu navegador en: **http://localhost:3000**
-
-## Auto-inicio (systemd)
-
-Para que inicie automáticamente al encender Linux:
-
-### 1. Crear servicio
-
-```bash
-mkdir -p ~/.config/systemd/user
-nano ~/.config/systemd/user/redragon-streamdeck.service
-```
-
-Contenido:
-
-```ini
-[Unit]
-Description=Redragon Stream Deck Manager
-After=graphical-session.target
-
-[Service]
-Type=simple
-WorkingDirectory=/ruta/a/redragon-streamdeck-linux-
-ExecStart=/usr/bin/node node_modules/.bin/tsx src/server.ts
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-```
-
-**Importante:** Cambia `/ruta/a/redragon-streamdeck-linux-` por la ruta real donde clonaste el repo.
-
-### 2. Activar servicio
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable redragon-streamdeck.service
-systemctl --user start redragon-streamdeck.service
-```
-
-### 3. Verificar estado
-
-```bash
-systemctl --user status redragon-streamdeck.service
-```
+Ver [INSTALL_ARCH.md](INSTALL_ARCH.md) para instrucciones detalladas.
 
 ## Uso
 
-### Interfaz Web
+### Ejecutar la aplicación
 
-1. Abre **http://localhost:3000** en tu navegador
-2. Haz clic en cualquier botón para editarlo
-3. Configura:
-   - **Etiqueta**: Texto que se muestra en el botón
-   - **Comando**: Comando a ejecutar (ej: `firefox`, `spotify`)
-   - **Color**: Color de fondo del botón
-   - **Icono**: Imagen PNG de 256x256 píxeles
+```bash
+redragon-streamdeck
+```
+
+O busca "Redragon Stream Deck" en el menú de aplicaciones.
+
+### Configurar un botón
+
+1. Haz clic en cualquier botón en la interfaz
+2. Configura:
+   - **Etiqueta**: Texto que se muestra
+   - **Comando**: Acción a ejecutar
+   - **Color**: Color de fondo
+   - **Icono**: Imagen personalizada
 
 ### Comandos Especiales
 
-Para navegar entre páginas usa estos comandos especiales:
+| Categoría | Comando | Descripción |
+|-----------|---------|-------------|
+| **Navegación** | `__NEXT_PAGE__` | Página siguiente |
+| | `__PREV_PAGE__` | Página anterior |
+| | `__PAGE_0__` | Ir a página específica |
+| **URLs** | `__URL_https://youtube.com` | Abrir URL |
+| **Texto** | `__TYPE_Hola mundo` | Escribir texto |
+| **Hotkeys** | `__KEY_ctrl+shift+s` | Simular teclas |
+| **Multi** | `__MULTI_cmd1;;cmd2` | Secuencia de comandos |
+| **Widgets** | `__CLOCK__` | Reloj HH:MM |
+| | `__CPU__` | Uso de CPU |
+| | `__RAM__` | Uso de RAM |
+| | `__TIMER_5__` | Timer 5 minutos |
+| **OBS** | `__OBS_STREAM__` | Toggle streaming |
+| | `__OBS_RECORD__` | Toggle grabación |
+| | `__OBS_SCENE_Gaming` | Cambiar escena |
+| **Twitch** | `__TWITCH_VIEWERS__` | Mostrar viewers |
+| | `__TWITCH_CLIP__` | Crear clip |
 
-| Comando | Acción |
-|---------|--------|
-| `__NEXT_PAGE__` | Ir a la página siguiente |
-| `__PREV_PAGE__` | Ir a la página anterior |
-| `__PAGE_0__` | Ir a la página 0 (primera) |
-| `__PAGE_1__` | Ir a la página 1 |
-| `__PAGE_N__` | Ir a la página N |
+Ver [CLAUDE.md](CLAUDE.md) para la lista completa de comandos.
 
-### Ejemplos de Comandos
+## Configurar Integraciones
+
+### OBS Studio
+
+1. En OBS: **Tools > WebSocket Server Settings**
+2. Habilitar "Enable WebSocket server"
+3. (Opcional) Configurar password
 
 ```bash
-# Abrir aplicaciones
-firefox
-spotify
-code
-thunar
+# Ejecutar con password de OBS
+OBS_WEBSOCKET_PASSWORD="tu_password" redragon-streamdeck
+```
 
-# Comandos con fallback
-code || codium
-kitty || alacritty
+### Twitch
 
-# Control de volumen (PipeWire/WirePlumber)
-wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
-wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
-wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+1. Crear app en https://dev.twitch.tv/console
+2. Configurar variables de entorno:
 
-# Hyprland workspaces
-hyprctl dispatch workspace 1
-hyprctl dispatch workspace 2
-
-# Screenshots
-grim -g "$(slurp)" ~/Pictures/screenshot.png
+```bash
+export TWITCH_CLIENT_ID="tu_client_id"
+export TWITCH_ACCESS_TOKEN="tu_token"
+export TWITCH_CHANNEL="tu_canal"
 ```
 
 ## Distribución de Botones
-
-El Stream Deck tiene 15 botones distribuidos así:
 
 ```
 ┌────┬────┬────┬────┬────┐
@@ -209,50 +140,60 @@ El Stream Deck tiene 15 botones distribuidos así:
 
 ```
 redragon-streamdeck-linux/
-├── src/
-│   ├── server.ts       # Servidor Express + lógica del Stream Deck
-│   └── streamdock.ts   # Driver USB de bajo nivel
+├── src-tauri/
+│   ├── src/lib.rs     # Backend Rust (USB, OBS, Twitch)
+│   └── Cargo.toml     # Dependencias Rust
 ├── public/
-│   ├── index.html      # Interfaz web
-│   ├── style.css       # Estilos
-│   └── app.js          # JavaScript del frontend
-├── icons/              # Iconos de botones (256x256)
-├── config.json         # Tu configuración personal
-├── config.example.json # Configuración de ejemplo
-└── package.json
+│   ├── index.html     # Interfaz gráfica
+│   ├── app-tauri.js   # JavaScript frontend
+│   └── style.css      # Estilos
+├── install.sh         # Instalador Arch Linux
+├── uninstall.sh       # Desinstalador
+├── INSTALL_ARCH.md    # Guía de instalación detallada
+└── CLAUDE.md          # Documentación de comandos
 ```
 
 ## Solución de Problemas
 
 ### El Stream Deck no se detecta
 
-1. Verifica que esté conectado:
 ```bash
-lsusb | grep 0200:1000
+# Verificar conexión
+lsusb | grep "0200:1000"
+
+# Verificar reglas udev
+cat /etc/udev/rules.d/99-redragon-streamdeck.rules
+
+# Desconectar y reconectar el dispositivo
 ```
 
-2. Verifica permisos:
+### Los hotkeys no funcionan
+
 ```bash
-ls -la /dev/bus/usb/*/*
+# Verificar ydotoold
+systemctl status ydotoold.service
+
+# Verificar grupo input
+groups | grep input
+
+# Si no estás en el grupo, agrégarte y reiniciar sesión
+sudo usermod -aG input $USER
 ```
 
-3. Reinstala reglas udev y reconecta el dispositivo.
+### Error "Interface Busy"
 
-### Error LIBUSB_ERROR_BUSY
-
-Otro programa está usando el dispositivo. Cierra Wine, Bottles o cualquier otro software que pueda estar accediendo al USB.
-
-### Los iconos no se muestran
-
-- Asegúrate de que sean imágenes de 256x256 píxeles
-- Formatos soportados: PNG, JPG
-- Verifica que ImageMagick esté instalado: `magick --version`
-
-### El servicio no inicia
-
-Revisa los logs:
 ```bash
-journalctl --user -u redragon-streamdeck.service -f
+# Buscar procesos usando el dispositivo
+pkill -f redragon
+
+# Reiniciar la aplicación
+redragon-streamdeck
+```
+
+## Desinstalar
+
+```bash
+./uninstall.sh
 ```
 
 ## Dispositivos Compatibles
@@ -274,14 +215,7 @@ journalctl --user -u redragon-streamdeck.service -f
 
 - **Tecnodespegue** - Desarrollo y mantenimiento
 - Basado en el protocolo de [mirabox-streamdock-node](https://github.com/nicross/mirabox-streamdock-node)
-
-## Desinstalar
-
-Para eliminar el software:
-
-```bash
-./uninstall.sh
-```
+- Desarrollado con ayuda de Claude AI
 
 ## Licencia
 

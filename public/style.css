@@ -1249,3 +1249,201 @@ input:focus-visible {
   flex: none;
   min-width: 100px;
 }
+
+/* Command Input Group */
+.command-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.command-input-group input {
+  flex: 1;
+}
+
+.command-input-group select {
+  min-width: 180px;
+  padding: 0.6rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.command-input-group select:hover {
+  border-color: var(--primary);
+}
+
+.command-input-group select optgroup {
+  background: var(--dark);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.command-input-group select option {
+  background: var(--dark);
+  color: var(--text);
+  padding: 0.5rem;
+}
+
+/* Reset Button */
+.btn-reset {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 100, 100, 0.1);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  border-radius: 8px;
+  color: #ff6b6b;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-reset:hover {
+  background: rgba(255, 100, 100, 0.2);
+  border-color: #ff6b6b;
+  box-shadow: 0 0 15px rgba(255, 100, 100, 0.3);
+}
+
+.btn-reset svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Controls layout update */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.controls label {
+  flex: 1;
+}
+
+/* Icon actions buttons */
+.icon-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  padding: 0.4rem 0.8rem !important;
+  font-size: 0.8rem !important;
+}
+
+.btn-primary.btn-small {
+  background: linear-gradient(135deg, var(--primary), #ff6b6b);
+}
+
+.btn-primary.btn-small:hover {
+  box-shadow: 0 0 20px var(--primary-glow);
+}
+
+/* Warning Button */
+.btn-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.2rem;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  border-radius: 8px;
+  color: #ffc107;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover {
+  background: rgba(255, 193, 7, 0.25);
+  border-color: #ffc107;
+  box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
+}
+
+.btn-warning svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Test Button */
+.btn-test {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  background: rgba(78, 204, 163, 0.15);
+  border: 1px solid rgba(78, 204, 163, 0.4);
+  border-radius: 8px;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-test:hover {
+  background: rgba(78, 204, 163, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.btn-test svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Command Help Section */
+.command-help {
+  margin-top: 0.5rem;
+}
+
+.command-help details {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+
+.command-help summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  user-select: none;
+}
+
+.command-help summary:hover {
+  color: var(--accent);
+}
+
+.command-help .command-list {
+  margin: 0.75rem 0 0.25rem 0;
+  padding-left: 1.25rem;
+  font-size: 0.8rem;
+  line-height: 1.8;
+  color: var(--text-dim);
+}
+
+.command-help .command-list li {
+  margin-bottom: 0.25rem;
+}
+
+.command-help code {
+  background: rgba(233, 69, 96, 0.15);
+  color: var(--primary);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+}

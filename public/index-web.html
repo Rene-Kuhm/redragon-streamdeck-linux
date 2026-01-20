@@ -61,13 +61,6 @@
         <input type="range" id="brightness" min="0" max="100" value="50" onchange="setBrightness(this.value)">
         <span id="brightness-value">50</span>%
       </label>
-      <button onclick="confirmReset()" class="btn-reset" title="Borrar toda la configuración y empezar de cero">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="1 4 1 10 7 10"/>
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-        </svg>
-        Reset
-      </button>
     </div>
 
     <!-- Selector de páginas -->
@@ -163,64 +156,8 @@
             </svg>
             Comando
           </label>
-          <div class="command-input-group">
-            <input type="text" id="edit-command" placeholder="ej: firefox, __URL_https://google.com">
-            <select id="preset-commands" onchange="applyPreset(this)">
-              <option value="">-- Comandos rápidos --</option>
-            </select>
-          </div>
-          <div class="command-help">
-            <details>
-              <summary>Comandos especiales disponibles</summary>
-              <ul class="command-list">
-                <li><code>__URL_</code> - Abrir URL (ej: <code>__URL_https://youtube.com</code>)</li>
-                <li><code>__TYPE_</code> - Escribir texto (ej: <code>__TYPE_Hola mundo</code>)</li>
-                <li><code>__KEY_</code> - Hotkey (ej: <code>__KEY_ctrl+shift+s</code>)</li>
-                <li><code>__MULTI_</code> - Multi-acción separada por <code>;;</code></li>
-                <li><code>__DELAY_</code> - Esperar ms (solo en MULTI)</li>
-                <li><code>__NEXT_PAGE__</code> / <code>__PREV_PAGE__</code> - Cambiar página</li>
-              </ul>
-              <strong>Widgets (actualización automática):</strong>
-              <ul class="command-list">
-                <li><code>__CLOCK__</code> / <code>__CLOCK_S__</code> - Hora actual</li>
-                <li><code>__DATE__</code> / <code>__WEEKDAY__</code> - Fecha</li>
-                <li><code>__CPU__</code> / <code>__RAM__</code> / <code>__TEMP__</code> - Info sistema</li>
-                <li><code>__TIMER_N__</code> - Temporizador N minutos</li>
-                <li><code>__OBS_STATUS__</code> - Estado OBS (LIVE/REC)</li>
-                <li><code>__TWITCH_VIEWERS__</code> / <code>__TWITCH_FOLLOWERS__</code> - Stats Twitch</li>
-              </ul>
-              <strong>OBS Studio (requiere OBS WebSocket):</strong>
-              <ul class="command-list">
-                <li><code>__OBS_STREAM__</code> - Iniciar/Detener streaming</li>
-                <li><code>__OBS_RECORD__</code> - Iniciar/Detener grabación</li>
-                <li><code>__OBS_MUTE__</code> - Mutear/Desmutear micrófono</li>
-                <li><code>__OBS_SCENE_nombre</code> - Cambiar escena (ej: <code>__OBS_SCENE_Gaming</code>)</li>
-              </ul>
-              <strong>Twitch (requiere API tokens):</strong>
-              <ul class="command-list">
-                <li><code>__TWITCH_CLIP__</code> - Crear clip</li>
-                <li><code>__TWITCH_AD_N__</code> - Comercial N segundos (ej: <code>__TWITCH_AD_30__</code>)</li>
-                <li><code>__TWITCH_CHAT_mensaje</code> - Enviar mensaje al chat</li>
-              </ul>
-              <details style="margin-top: 8px; font-size: 11px;">
-                <summary>Configuración OBS/Twitch</summary>
-                <p style="margin: 4px 0;">Variables de entorno requeridas:</p>
-                <code style="font-size: 10px; display: block; background: #0a0a14; padding: 4px; border-radius: 4px;">
-OBS_WEBSOCKET_URL=ws://localhost:4455<br>
-OBS_WEBSOCKET_PASSWORD=tupassword<br>
-TWITCH_CLIENT_ID=tu_client_id<br>
-TWITCH_ACCESS_TOKEN=tu_token<br>
-TWITCH_CHANNEL=tu_canal
-                </code>
-              </details>
-            </details>
-          </div>
-          <button type="button" onclick="testCommand()" class="btn-test">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            Probar comando
-          </button>
+          <input type="text" id="edit-command" placeholder="ej: firefox, __NEXT_PAGE__, __PREV_PAGE__">
+          <small>Usa __NEXT_PAGE__, __PREV_PAGE__ o __PAGE_X__ para navegación</small>
         </div>
 
         <div class="form-group">
@@ -242,19 +179,12 @@ TWITCH_CHANNEL=tu_canal
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <polyline points="21 15 16 10 5 21"/>
             </svg>
-            Icono
+            Icono (256x256)
           </label>
           <div class="icon-upload">
             <div id="icon-preview" class="icon-preview"></div>
             <div class="icon-actions">
-              <button onclick="browseIcon()" class="btn-primary btn-small">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                Buscar imagen
-              </button>
+              <input type="file" id="edit-icon" accept="image/*" onchange="previewIcon(this)">
               <button onclick="removeIcon()" class="btn-secondary btn-small">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
@@ -264,7 +194,6 @@ TWITCH_CHANNEL=tu_canal
               </button>
             </div>
           </div>
-          <input type="hidden" id="edit-icon-path">
         </div>
 
         <div class="modal-actions">
@@ -306,19 +235,12 @@ TWITCH_CHANNEL=tu_canal
             </svg>
             Guardar
           </button>
-          <button onclick="clearPageButtons()" class="btn-warning">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="1 4 1 10 7 10"/>
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-            </svg>
-            Limpiar botones
-          </button>
           <button onclick="deletePage()" class="btn-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-            Eliminar página
+            Eliminar
           </button>
           <button onclick="closePageModal()" class="btn-secondary">Cancelar</button>
         </div>
@@ -388,7 +310,7 @@ TWITCH_CHANNEL=tu_canal
     </div>
   </div>
 
-  <script src="app-tauri.js"></script>
+  <script src="app.js"></script>
   <script>
     // Create animated particles
     function createParticles() {
