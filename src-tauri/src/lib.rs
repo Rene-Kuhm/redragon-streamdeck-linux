@@ -209,11 +209,37 @@ fn get_status(state: State<AppState>) -> StatusResponse {
 
 #[tauri::command]
 fn connect_device(state: State<AppState>) -> Result<bool, String> {
-    let connected = find_device().is_some();
-    if let Ok(mut dev_state) = state.device_connected.lock() {
-        *dev_state = connected;
+    // Try to find and connect to the device
+    let context = match Context::new() {
+        Ok(c) => c,
+        Err(e) => return Err(format!("USB context error: {}", e)),
+    };
+
+    let devices = match context.devices() {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Could not list USB devices: {}", e)),
+    };
+
+    for device in devices.iter() {
+        let desc = match device.device_descriptor() {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        if desc.vendor_id() == VENDOR_ID && desc.product_id() == PRODUCT_ID {
+            // Found the device!
+            if let Ok(mut dev_state) = state.device_connected.lock() {
+                *dev_state = true;
+            }
+            return Ok(true);
+        }
     }
-    Ok(connected)
+
+    // Device not found
+    if let Ok(mut dev_state) = state.device_connected.lock() {
+        *dev_state = false;
+    }
+    Ok(false)
 }
 
 #[tauri::command]
