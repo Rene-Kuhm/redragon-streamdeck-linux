@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+src-tauri/target/
+src-tauri/gen/
 
 # Config personal (usar config.example.json como base)
 config.json
