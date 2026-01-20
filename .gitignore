@@ -30,3 +30,6 @@ Thumbs.db
 .env
 .env.local
 public/icons/
+releases/*.deb
+releases/*.rpm
+releases/*.AppImage
