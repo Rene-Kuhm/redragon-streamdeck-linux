@@ -36,11 +36,20 @@ print_success() {
     echo -e "${GREEN}[✓]${NC} $1"
 }
 
-# Verificar que estamos en Arch Linux
+# Verificar que estamos en Arch Linux o derivados
 check_arch() {
-    if [ ! -f /etc/arch-release ]; then
-        print_error "Este instalador es solo para Arch Linux"
-        print_warning "Para otras distros, consulta INSTALL_ARCH.md para instrucciones manuales"
+    # Detectar Arch y derivados (CachyOS, Manjaro, EndeavourOS, etc.)
+    if [ -f /etc/arch-release ]; then
+        print_success "Detectado: Arch Linux"
+    elif [ -f /etc/os-release ] && grep -qi "arch\|cachyos\|manjaro\|endeavour\|garuda\|artix" /etc/os-release; then
+        DISTRO_NAME=$(grep "^NAME=" /etc/os-release | cut -d'"' -f2)
+        print_success "Detectado: $DISTRO_NAME (basado en Arch)"
+    elif command -v pacman &>/dev/null; then
+        print_success "Detectado: Sistema con pacman (asumiendo compatible con Arch)"
+    else
+        print_error "Este instalador es para Arch Linux y derivados (CachyOS, Manjaro, etc.)"
+        print_warning "Para Debian/Ubuntu usa: ./install-ubuntu.sh"
+        print_warning "Para Fedora usa: ./install-fedora.sh"
         exit 1
     fi
 }
@@ -70,6 +79,26 @@ install_dependencies() {
 # Configurar ydotool
 setup_ydotool() {
     print_step "Configurando ydotool para hotkeys..."
+
+    # Crear archivo de servicio si no existe (común en Arch/CachyOS/Manjaro)
+    SERVICE_FILE="/etc/systemd/system/ydotoold.service"
+    if [ ! -f "$SERVICE_FILE" ] && [ ! -f "/usr/lib/systemd/system/ydotoold.service" ]; then
+        print_warning "Creando servicio ydotoold.service..."
+        sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
+[Unit]
+Description=ydotoold - ydotool daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+YDOTOOL_EOF
+        sudo systemctl daemon-reload
+    fi
 
     # Habilitar servicio
     if ! systemctl is-enabled ydotoold.service &>/dev/null; then
