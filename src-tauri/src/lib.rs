@@ -1267,6 +1267,43 @@ fn weather_icon(code: i64) -> &'static str {
     }
 }
 
+// Get Spotify Now Playing info via playerctl
+fn get_widget_spotify() -> String {
+    let output = Command::new("playerctl")
+        .args(["metadata", "--format", "{{artist}} - {{title}}"])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() || s == " - " {
+                "Stopped".to_string()
+            } else if s.len() > 12 {
+                // Truncate long titles
+                format!("{}...", &s[..12])
+            } else {
+                s
+            }
+        }
+        _ => "NoMedia".to_string(),
+    }
+}
+
+// Execute Spotify playerctl command
+fn spotify_control(action: &str) {
+    let cmd = match action {
+        "play" => vec!["play"],
+        "pause" => vec!["pause"],
+        "next" => vec!["next"],
+        "prev" => vec!["previous"],
+        "toggle" => vec!["play-pause"],
+        _ => return,
+    };
+    thread::spawn(move || {
+        Command::new("playerctl").args(&cmd).status().ok();
+    });
+}
+
 // Get timer remaining time
 fn get_widget_timer() -> String {
     let start = TIMER_START.load(Ordering::Relaxed);
@@ -1325,6 +1362,7 @@ fn is_widget_command(cmd: &str) -> bool {
         || cmd == "__TWITCH_VIEWERS__"
         || cmd == "__TWITCH_FOLLOWERS__"
         || cmd == "__WEATHER__"
+        || cmd == "__SPOTIFY__"
 }
 
 // Get the display text for a widget command
@@ -1356,6 +1394,8 @@ fn get_widget_text(cmd: &str) -> Option<String> {
         Some(get_twitch_followers_text())
     } else if cmd == "__WEATHER__" {
         Some(get_widget_weather())
+    } else if cmd == "__SPOTIFY__" {
+        Some(get_widget_spotify())
     } else {
         None
     }
@@ -2244,10 +2284,34 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
         || cmd == "__OBS_STATUS__"
         || cmd == "__TWITCH_VIEWERS__"
         || cmd == "__TWITCH_FOLLOWERS__"
+        || cmd == "__WEATHER__"
+        || cmd == "__SPOTIFY__"
     {
         // Widgets don't execute anything when pressed, they just display info
         // But we can request a refresh to show updated value
         request_refresh();
+        return;
+    }
+
+    // Handle Spotify control commands
+    if cmd == "__SPOTIFY_PLAY__" {
+        spotify_control("play");
+        return;
+    }
+    if cmd == "__SPOTIFY_PAUSE__" {
+        spotify_control("pause");
+        return;
+    }
+    if cmd == "__SPOTIFY_TOGGLE__" {
+        spotify_control("toggle");
+        return;
+    }
+    if cmd == "__SPOTIFY_NEXT__" {
+        spotify_control("next");
+        return;
+    }
+    if cmd == "__SPOTIFY_PREV__" {
+        spotify_control("prev");
         return;
     }
 
@@ -2790,6 +2854,28 @@ fn run_command(command: String) -> Result<(), String> {
                 }
             }
         });
+        return Ok(());
+    }
+
+    // Handle Spotify control commands
+    if cmd == "__SPOTIFY_PLAY__" {
+        spotify_control("play");
+        return Ok(());
+    }
+    if cmd == "__SPOTIFY_PAUSE__" {
+        spotify_control("pause");
+        return Ok(());
+    }
+    if cmd == "__SPOTIFY_TOGGLE__" {
+        spotify_control("toggle");
+        return Ok(());
+    }
+    if cmd == "__SPOTIFY_NEXT__" {
+        spotify_control("next");
+        return Ok(());
+    }
+    if cmd == "__SPOTIFY_PREV__" {
+        spotify_control("prev");
         return Ok(());
     }
 
@@ -3365,6 +3451,37 @@ fn get_preset_commands() -> Vec<(String, String, String)> {
             "Home".to_string(),
             "__PAGE_0__".to_string(),
             "Ir a página principal".to_string(),
+        ),
+        // Spotify Integration
+        (
+            "Spotify".to_string(),
+            "__SPOTIFY__".to_string(),
+            "Widget: muestra canción actual".to_string(),
+        ),
+        (
+            "Spotify Play".to_string(),
+            "__SPOTIFY_PLAY__".to_string(),
+            "Reproducir Spotify".to_string(),
+        ),
+        (
+            "Spotify Pause".to_string(),
+            "__SPOTIFY_PAUSE__".to_string(),
+            "Pausar Spotify".to_string(),
+        ),
+        (
+            "Spotify Toggle".to_string(),
+            "__SPOTIFY_TOGGLE__".to_string(),
+            "Play/Pause Spotify".to_string(),
+        ),
+        (
+            "Spotify Next".to_string(),
+            "__SPOTIFY_NEXT__".to_string(),
+            "Siguiente pista".to_string(),
+        ),
+        (
+            "Spotify Prev".to_string(),
+            "__SPOTIFY_PREV__".to_string(),
+            "Pista anterior".to_string(),
         ),
         // Global Hotkeys
         (
