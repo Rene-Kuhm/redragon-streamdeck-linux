@@ -12,6 +12,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+RUN_DEPS=true
+RUN_SYSTEM_SETUP=true
+RUN_BUILD=true
+RUN_INSTALL=true
+RUN_AUTOSTART=true
+SKIP_BUILD_IF_EXISTS=false
+
 print_header() {
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -34,6 +41,100 @@ print_error() {
 
 print_success() {
     echo -e "${GREEN}[✓]${NC} $1"
+}
+
+show_help() {
+    cat << 'EOF'
+Uso: ./install.sh [opciones]
+
+Opciones:
+  --deps-only          Instala dependencias y configura permisos del sistema
+  --build-only         Solo compila la aplicación
+  --install-only       Solo instala el binario ya compilado y la entrada desktop
+  --no-build           No compila; reutiliza el binario existente
+  --skip-build-if-exists
+                       No recompila si ya existe src-tauri/target/release/redragon-streamdeck
+  --no-autostart       No pregunta por auto-inicio
+  -h, --help           Muestra esta ayuda
+
+Notas:
+  - Los pasos de sistema usan sudo: pacman, systemctl, usermod, udevadm y /usr/local/bin.
+  - Si sudo no puede pedir contraseña, el instalador falla temprano con un mensaje claro.
+EOF
+}
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --deps-only)
+                RUN_DEPS=true
+                RUN_SYSTEM_SETUP=true
+                RUN_BUILD=false
+                RUN_INSTALL=false
+                RUN_AUTOSTART=false
+                ;;
+            --build-only)
+                RUN_DEPS=false
+                RUN_SYSTEM_SETUP=false
+                RUN_BUILD=true
+                RUN_INSTALL=false
+                RUN_AUTOSTART=false
+                ;;
+            --install-only)
+                RUN_DEPS=false
+                RUN_SYSTEM_SETUP=false
+                RUN_BUILD=false
+                RUN_INSTALL=true
+                RUN_AUTOSTART=false
+                ;;
+            --no-build)
+                RUN_BUILD=false
+                ;;
+            --skip-build-if-exists)
+                SKIP_BUILD_IF_EXISTS=true
+                ;;
+            --no-autostart)
+                RUN_AUTOSTART=false
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Opción desconocida: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+ensure_sudo() {
+    if ! command -v sudo &>/dev/null; then
+        print_error "sudo no está instalado o no está disponible en PATH"
+        exit 1
+    fi
+
+    if sudo -n true 2>/dev/null; then
+        return 0
+    fi
+
+    if [ -t 0 ]; then
+        print_step "Solicitando permisos sudo una sola vez..."
+        sudo -v
+        return 0
+    fi
+
+    print_error "Este paso necesita sudo, pero no hay una terminal interactiva para pedir contraseña"
+    print_warning "Ejecuta el instalador desde tu terminal o corre primero: sudo -v"
+    exit 1
+}
+
+preflight_sudo() {
+    if [ "$RUN_DEPS" = true ] || [ "$RUN_SYSTEM_SETUP" = true ] || [ "$RUN_INSTALL" = true ]; then
+        ensure_sudo
+    fi
 }
 
 user_has_input_group() {
@@ -83,6 +184,7 @@ install_dependencies() {
     done
 
     if [ -n "$MISSING" ]; then
+        ensure_sudo
         echo -e "  Instalando:$MISSING"
         sudo pacman -S --needed --noconfirm $MISSING
     else
@@ -98,6 +200,7 @@ setup_ydotool() {
     SERVICE_FILE="/etc/systemd/system/ydotoold.service"
     if [ ! -f "$SERVICE_FILE" ] && [ ! -f "/usr/lib/systemd/system/ydotoold.service" ]; then
         print_warning "Creando servicio ydotoold.service..."
+        ensure_sudo
         sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
 [Unit]
 Description=ydotoold - ydotool daemon
@@ -116,16 +219,19 @@ YDOTOOL_EOF
 
     # Habilitar servicio
     if ! systemctl is-enabled ydotoold.service &>/dev/null; then
+        ensure_sudo
         sudo systemctl enable ydotoold.service
     fi
 
     if ! systemctl is-active ydotoold.service &>/dev/null; then
+        ensure_sudo
         sudo systemctl start ydotoold.service
     fi
 
     # Agregar usuario al grupo input
     if ! user_has_input_group; then
         print_warning "Agregando usuario al grupo 'input'..."
+        ensure_sudo
         sudo usermod -aG input "$USER"
         print_warning "Necesitarás cerrar sesión y volver a iniciar para que los hotkeys funcionen"
     elif ! groups | grep -qw input; then
@@ -144,6 +250,7 @@ setup_udev() {
     RULES_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess"'
 
     if [ ! -f "$RULES_FILE" ]; then
+        ensure_sudo
         echo "$RULES_CONTENT" | sudo tee "$RULES_FILE" > /dev/null
         sudo udevadm control --reload-rules
         sudo udevadm trigger
@@ -169,6 +276,11 @@ check_rust() {
 
 # Compilar la aplicación
 build_app() {
+    if [ "$SKIP_BUILD_IF_EXISTS" = true ] && [ -f "src-tauri/target/release/redragon-streamdeck" ]; then
+        print_success "Binario existente encontrado; omitiendo compilación"
+        return 0
+    fi
+
     print_step "Compilando la aplicación (esto puede tardar unos minutos)..."
 
     cargo build --release --manifest-path src-tauri/Cargo.toml
@@ -185,7 +297,14 @@ build_app() {
 install_app() {
     print_step "Instalando la aplicación..."
 
+    if [ ! -f "src-tauri/target/release/redragon-streamdeck" ]; then
+        print_error "No existe src-tauri/target/release/redragon-streamdeck"
+        print_warning "Ejecuta primero: ./install.sh --build-only"
+        exit 1
+    fi
+
     # Copiar binario
+    ensure_sudo
     sudo cp src-tauri/target/release/redragon-streamdeck /usr/local/bin/
     sudo chmod +x /usr/local/bin/redragon-streamdeck
 
@@ -251,7 +370,7 @@ EOF
 show_summary() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              ¡Instalación Completada!                        ║${NC}"
+    echo -e "${GREEN}║              ¡Proceso Completado!                            ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo "Para ejecutar la aplicación:"
@@ -277,16 +396,28 @@ show_summary() {
 
 # Main
 main() {
+    parse_args "$@"
     print_header
 
     check_arch
-    install_dependencies
-    setup_ydotool
-    setup_udev
-    check_rust
-    build_app
-    install_app
-    setup_autostart
+    preflight_sudo
+    if [ "$RUN_DEPS" = true ]; then
+        install_dependencies
+    fi
+    if [ "$RUN_SYSTEM_SETUP" = true ]; then
+        setup_ydotool
+        setup_udev
+    fi
+    if [ "$RUN_BUILD" = true ]; then
+        check_rust
+        build_app
+    fi
+    if [ "$RUN_INSTALL" = true ]; then
+        install_app
+    fi
+    if [ "$RUN_AUTOSTART" = true ]; then
+        setup_autostart
+    fi
     show_summary
 }
 
