@@ -2890,7 +2890,11 @@ fn reload_hotkeys(state: State<AppState>) -> Result<(), String> {
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "Rene-Kuhm/redragon-streamdeck-linux-";
-const CURRENT_COMMIT: &str = "ea4a09c364eff029afb8bca6bac999c82a789c8e";
+const CURRENT_COMMIT: Option<&str> = option_env!("REDRAGON_CURRENT_COMMIT");
+
+fn short_commit(commit: &str) -> String {
+    commit[..7.min(commit.len())].to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
@@ -2941,12 +2945,13 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
     if commits.is_empty() {
+        let current_commit = CURRENT_COMMIT.unwrap_or("unknown");
         return Ok(UpdateInfo {
             available: false,
             current_version: CURRENT_VERSION.to_string(),
-            current_commit: CURRENT_COMMIT.to_string(),
-            latest_commit: CURRENT_COMMIT.to_string(),
-            latest_commit_short: CURRENT_COMMIT[..7].to_string(),
+            current_commit: short_commit(current_commit),
+            latest_commit: current_commit.to_string(),
+            latest_commit_short: short_commit(current_commit),
             changes: vec![],
             update_date: String::new(),
         });
@@ -2957,13 +2962,15 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         .unwrap_or("")
         .to_string();
 
-    let available = latest_commit != CURRENT_COMMIT;
+    let available = CURRENT_COMMIT
+        .map(|current_commit| latest_commit != current_commit)
+        .unwrap_or(false);
 
     // Collect changes (commits since current version)
     let mut changes: Vec<CommitInfo> = Vec::new();
     for commit in &commits {
         let sha = commit["sha"].as_str().unwrap_or("").to_string();
-        if sha == CURRENT_COMMIT {
+        if Some(sha.as_str()) == CURRENT_COMMIT {
             break; // Stop at current version
         }
 
@@ -3011,9 +3018,9 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
     Ok(UpdateInfo {
         available,
         current_version: CURRENT_VERSION.to_string(),
-        current_commit: CURRENT_COMMIT[..7].to_string(),
+        current_commit: CURRENT_COMMIT.map(short_commit).unwrap_or_else(|| "unknown".to_string()),
         latest_commit: latest_commit.clone(),
-        latest_commit_short: latest_commit[..7.min(latest_commit.len())].to_string(),
+        latest_commit_short: short_commit(&latest_commit),
         changes,
         update_date,
     })
@@ -3130,7 +3137,10 @@ echo "Reinicia la aplicación para aplicar los cambios."
 
 #[tauri::command]
 fn get_current_version() -> (String, String) {
-    (CURRENT_VERSION.to_string(), CURRENT_COMMIT[..7].to_string())
+    (
+        CURRENT_VERSION.to_string(),
+        CURRENT_COMMIT.map(short_commit).unwrap_or_else(|| "unknown".to_string()),
+    )
 }
 
 // ============================================================================
