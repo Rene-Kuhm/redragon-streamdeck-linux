@@ -450,6 +450,8 @@ pub struct Config {
     #[serde(rename = "currentPage")]
     pub current_page: usize,
     pub pages: Vec<Page>,
+    #[serde(rename = "appProfiles")]
+    pub app_profiles: HashMap<String, usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -524,6 +526,7 @@ impl AppState {
                 name: "Principal".to_string(),
                 buttons,
             }],
+            app_profiles: HashMap::new(),
         }
     }
 
@@ -2879,6 +2882,13 @@ fn run_command(command: String) -> Result<(), String> {
         return Ok(());
     }
 
+    // Handle __PROFILE_ command (manual profile switch)
+    if cmd.starts_with("__PROFILE_") {
+        let profile_name = cmd[10..].to_string();
+        handle_profile_switch(&profile_name);
+        return Ok(());
+    }
+
     // Execute normal shell command
     std::thread::spawn(move || {
         Command::new("sh").arg("-c").arg(&command).spawn().ok();
@@ -3483,6 +3493,32 @@ fn get_preset_commands() -> Vec<(String, String, String)> {
             "__SPOTIFY_PREV__".to_string(),
             "Pista anterior".to_string(),
         ),
+        // App Profile Commands
+        (
+            "Profile OBS".to_string(),
+            "__PROFILE_obs".to_string(),
+            "Perfil para OBS Studio".to_string(),
+        ),
+        (
+            "Profile Firefox".to_string(),
+            "__PROFILE_firefox".to_string(),
+            "Perfil para Firefox".to_string(),
+        ),
+        (
+            "Profile Discord".to_string(),
+            "__PROFILE_discord".to_string(),
+            "Perfil para Discord".to_string(),
+        ),
+        (
+            "Profile Terminal".to_string(),
+            "__PROFILE_terminal".to_string(),
+            "Perfil para terminal".to_string(),
+        ),
+        (
+            "Profile Default".to_string(),
+            "__PROFILE_DEFAULT".to_string(),
+            "Volver al perfil principal".to_string(),
+        ),
         // Global Hotkeys
         (
             "Hotkey F1".to_string(),
@@ -3895,6 +3931,103 @@ fn get_current_version() -> (String, String) {
 }
 
 // ============================================================================
+// App Profile Switcher (per-application button pages)
+// ============================================================================
+
+fn get_active_window_app() -> Option<String> {
+    // Try hyprctl first (Hyprland)
+    if let Ok(output) = Command::new("hyprctl").args(["activewindow", "-j"]).output() {
+        if output.status.success() {
+            if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                if let Some(class) = json.get("class").and_then(|v| v.as_str()) {
+                    return Some(class.to_lowercase());
+                }
+            }
+        }
+    }
+    // Fallback to xdotool (X11)
+    if let Ok(output) = Command::new("xdotool").args(["getactivewindow", "getwindowpid", "xdotool", "getwindowclassname"]).output() {
+        if output.status.success() {
+            let class = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            if !class.is_empty() {
+                return Some(class);
+            }
+        }
+    }
+    None
+}
+
+fn handle_profile_switch(profile_name: &str) {
+    let config_path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("redragon-streamdeck")
+        .join("config.json");
+
+    if !config_path.exists() {
+        return;
+    }
+
+    let content = fs::read_to_string(&config_path).unwrap_or_default();
+    let mut config: Config = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    if profile_name == "DEFAULT" {
+        // Reset to page 0
+        config.current_page = 0;
+        if let Ok(json) = serde_json::to_string_pretty(&config) {
+            fs::write(&config_path, json).ok();
+        }
+        request_refresh();
+        return;
+    }
+
+    // Look up profile: exact match first, then case-insensitive contains
+    let lookup = profile_name.to_lowercase();
+    if let Some(&page_index) = config.app_profiles.get(&lookup) {
+        if page_index < config.pages.len() {
+            config.current_page = page_index;
+            if let Ok(json) = serde_json::to_string_pretty(&config) {
+                fs::write(&config_path, json).ok();
+            }
+            request_refresh();
+        }
+    }
+}
+
+fn start_app_profile_watcher(config_path: PathBuf, _icons_path: PathBuf) {
+    std::thread::spawn(move || {
+        let mut last_app: Option<String> = None;
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+
+            if let Some(current_app) = get_active_window_app() {
+                if last_app.as_ref() != Some(&current_app) {
+                    last_app = Some(current_app.clone());
+
+                    if let Ok(content) = fs::read_to_string(&config_path) {
+                        if let Ok(config) = serde_json::from_str::<Config>(&content) {
+                            if let Some(&page_index) = config.app_profiles.get(&current_app) {
+                                if page_index < config.pages.len() && page_index != config.current_page {
+                                    // Update config with the new page
+                                    let mut new_config = config.clone();
+                                    new_config.current_page = page_index;
+                                    if let Ok(json) = serde_json::to_string_pretty(&new_config) {
+                                        fs::write(&config_path, json).ok();
+                                    }
+                                    request_refresh();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ============================================================================
 // Tauri App Entry Point
 // ============================================================================
 
@@ -3923,6 +4056,9 @@ pub fn run() {
 
             // Load registered hotkeys from config
             load_hotkeys_from_config(&config_path);
+
+            // Start app profile auto-switcher
+            start_app_profile_watcher(config_path.clone(), icons_path.clone());
 
             app.manage(state);
 
