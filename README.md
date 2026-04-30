@@ -67,6 +67,21 @@ redragon-streamdeck
 
 O busca "Redragon Stream Deck" en el menú de aplicaciones.
 
+### Auto-inicio
+
+Para iniciar la app automáticamente al iniciar sesión:
+
+```bash
+./install.sh --enable-autostart
+```
+
+Comandos útiles:
+
+```bash
+./install.sh --autostart-status
+./install.sh --disable-autostart
+```
+
 ### Configurar un botón
 
 1. Haz clic en cualquier botón en la interfaz
@@ -147,6 +162,7 @@ redragon-streamdeck-linux/
 │   ├── app-tauri.js   # JavaScript frontend
 │   └── style.css      # Estilos
 ├── install.sh         # Instalador Arch Linux
+├── redragon-streamdeck.service # Servicio systemd de usuario para auto-inicio
 ├── uninstall.sh       # Desinstalador
 ├── INSTALL_ARCH.md    # Guía de instalación detallada
 └── CLAUDE.md          # Documentación de comandos
