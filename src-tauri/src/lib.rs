@@ -2624,6 +2624,21 @@ fn save_full_config(state: State<AppState>, config: Config) -> Result<(), String
 }
 
 #[tauri::command]
+fn get_app_profiles(state: State<AppState>) -> Result<std::collections::HashMap<String, usize>, String> {
+    let config = state.config.lock().map_err(|e| e.to_string())?;
+    Ok(config.app_profiles.clone())
+}
+
+#[tauri::command]
+fn save_app_profiles(state: State<AppState>, app_profiles: std::collections::HashMap<String, usize>) -> Result<(), String> {
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    config.app_profiles = app_profiles;
+    drop(config);
+    state.save_config();
+    Ok(())
+}
+
+#[tauri::command]
 fn get_status(state: State<AppState>) -> StatusResponse {
     let connected = state.device_connected.lock().map(|c| *c).unwrap_or(false);
     StatusResponse { connected }
@@ -4099,6 +4114,9 @@ pub fn run() {
             check_for_updates,
             install_update,
             get_current_version,
+            // App profile commands
+            get_app_profiles,
+            save_app_profiles,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
