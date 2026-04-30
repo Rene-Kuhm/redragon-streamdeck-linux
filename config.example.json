@@ -42,5 +42,9 @@
         "15": { "label": "", "command": "", "color": "#1a1a2e", "icon": "" }
       }
     }
-  ]
+  ],
+  "appProfiles": {
+    "obs": 1,
+    "firefox": 2
+  }
 }
