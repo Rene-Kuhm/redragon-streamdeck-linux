@@ -6,6 +6,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,6 +20,7 @@ RUN_BUILD=true
 RUN_INSTALL=true
 RUN_AUTOSTART=true
 SKIP_BUILD_IF_EXISTS=false
+AUTOSTART_ACTION="ask"
 
 print_header() {
     echo -e "${BLUE}"
@@ -55,6 +58,9 @@ Opciones:
   --skip-build-if-exists
                        No recompila si ya existe src-tauri/target/release/redragon-streamdeck
   --no-autostart       No pregunta por auto-inicio
+  --enable-autostart   Habilita auto-inicio con systemd de usuario sin preguntar
+  --disable-autostart  Deshabilita auto-inicio con systemd de usuario y termina
+  --autostart-status   Muestra estado del servicio de auto-inicio y termina
   -h, --help           Muestra esta ayuda
 
 Notas:
@@ -95,6 +101,26 @@ parse_args() {
                 ;;
             --no-autostart)
                 RUN_AUTOSTART=false
+                ;;
+            --enable-autostart)
+                RUN_AUTOSTART=true
+                AUTOSTART_ACTION="enable"
+                ;;
+            --disable-autostart)
+                RUN_DEPS=false
+                RUN_SYSTEM_SETUP=false
+                RUN_BUILD=false
+                RUN_INSTALL=false
+                RUN_AUTOSTART=true
+                AUTOSTART_ACTION="disable"
+                ;;
+            --autostart-status)
+                RUN_DEPS=false
+                RUN_SYSTEM_SETUP=false
+                RUN_BUILD=false
+                RUN_INSTALL=false
+                RUN_AUTOSTART=true
+                AUTOSTART_ACTION="status"
                 ;;
             -h|--help)
                 show_help
@@ -333,37 +359,47 @@ EOF
 }
 
 # Configuración opcional de auto-inicio
+install_autostart_service() {
+    mkdir -p ~/.config/systemd/user
+    cp "$SCRIPT_DIR/redragon-streamdeck.service" ~/.config/systemd/user/redragon-streamdeck.service
+    systemctl --user daemon-reload
+}
+
 setup_autostart() {
+    case "$AUTOSTART_ACTION" in
+        enable)
+            print_step "Configurando auto-inicio..."
+            install_autostart_service
+            systemctl --user enable redragon-streamdeck.service
+            print_success "Auto-inicio configurado"
+            print_warning "El servicio iniciará en el próximo login"
+            return
+            ;;
+        disable)
+            print_step "Deshabilitando auto-inicio..."
+            systemctl --user disable --now redragon-streamdeck.service 2>/dev/null || true
+            rm -f ~/.config/systemd/user/redragon-streamdeck.service
+            systemctl --user daemon-reload
+            print_success "Auto-inicio deshabilitado"
+            return
+            ;;
+        status)
+            if systemctl --user list-unit-files redragon-streamdeck.service --no-pager --no-legend | grep -q redragon-streamdeck.service; then
+                systemctl --user status redragon-streamdeck.service --no-pager || true
+            else
+                print_warning "Auto-inicio no configurado"
+            fi
+            return
+            ;;
+    esac
+
     echo ""
     read -p "¿Deseas que la aplicación inicie automáticamente? [y/N] " -n 1 -r
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_step "Configurando auto-inicio..."
-
-        mkdir -p ~/.config/systemd/user
-
-        cat > ~/.config/systemd/user/redragon-streamdeck.service << 'EOF'
-[Unit]
-Description=Redragon Stream Deck Manager
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/redragon-streamdeck
-Restart=on-failure
-RestartSec=5
-Environment=DISPLAY=:0
-
-[Install]
-WantedBy=default.target
-EOF
-
-        systemctl --user daemon-reload
-        systemctl --user enable redragon-streamdeck.service
-
-        print_success "Auto-inicio configurado"
-        print_warning "El servicio iniciará en el próximo login"
+        AUTOSTART_ACTION="enable"
+        setup_autostart
     fi
 }
 
@@ -401,6 +437,11 @@ main() {
     print_header
 
     check_arch
+    if [ "$RUN_DEPS" = false ] && [ "$RUN_SYSTEM_SETUP" = false ] && [ "$RUN_BUILD" = false ] && [ "$RUN_INSTALL" = false ] && [ "$RUN_AUTOSTART" = true ]; then
+        setup_autostart
+        exit 0
+    fi
+
     preflight_sudo
     if [ "$RUN_DEPS" = true ]; then
         install_dependencies
