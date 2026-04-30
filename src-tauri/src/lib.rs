@@ -2555,11 +2555,12 @@ fn get_icons_path(state: State<AppState>) -> String {
 
 #[tauri::command]
 fn setup_udev_rules() -> Result<bool, String> {
-    let rules_path = "/etc/udev/rules.d/99-redragon.rules";
-    let rules_content = r#"SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666""#;
+    let rules_path = "/etc/udev/rules.d/99-redragon-streamdeck.rules";
+    let legacy_rules_path = "/etc/udev/rules.d/99-redragon.rules";
+    let rules_content = r#"SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess""#;
 
     // Check if rules already exist
-    if std::path::Path::new(rules_path).exists() {
+    if std::path::Path::new(rules_path).exists() || std::path::Path::new(legacy_rules_path).exists() {
         return Ok(true);
     }
 
@@ -2580,7 +2581,8 @@ fn setup_udev_rules() -> Result<bool, String> {
 
 #[tauri::command]
 fn check_udev_rules() -> bool {
-    std::path::Path::new("/etc/udev/rules.d/99-redragon.rules").exists()
+    std::path::Path::new("/etc/udev/rules.d/99-redragon-streamdeck.rules").exists()
+        || std::path::Path::new("/etc/udev/rules.d/99-redragon.rules").exists()
 }
 
 #[tauri::command]
