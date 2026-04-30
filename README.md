@@ -175,8 +175,32 @@ systemctl status ydotoold.service
 # Verificar grupo input
 groups | grep input
 
+# Verificar que el socket sea accesible por el grupo input
+stat -c '%a %U:%G %n' /tmp/.ydotool_socket
+
 # Si no estás en el grupo, agrégarte y reiniciar sesión
 sudo usermod -aG input $USER
+```
+
+El socket de `ydotoold` debe verse así:
+
+```text
+660 root:input /tmp/.ydotool_socket
+```
+
+Si aparece como `root:root`, reinstala o reinicia el servicio generado por `install.sh`:
+
+```bash
+sudo cp ydotoold.service /etc/systemd/system/ydotoold.service
+sudo systemctl daemon-reload
+sudo systemctl restart ydotoold.service
+```
+
+También puedes probar el acceso directamente:
+
+```bash
+YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool type ""
+YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool key 29:1 29:0
 ```
 
 ### Error "Interface Busy"
