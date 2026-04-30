@@ -196,26 +196,24 @@ install_dependencies() {
 setup_ydotool() {
     print_step "Configurando ydotool para hotkeys..."
 
-    # Crear archivo de servicio si no existe (común en Arch/CachyOS/Manjaro)
+    # Crear/actualizar servicio con socket accesible para usuarios del grupo input
     SERVICE_FILE="/etc/systemd/system/ydotoold.service"
-    if [ ! -f "$SERVICE_FILE" ] && [ ! -f "/usr/lib/systemd/system/ydotoold.service" ]; then
-        print_warning "Creando servicio ydotoold.service..."
-        ensure_sudo
-        sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
+    print_warning "Configurando servicio ydotoold.service..."
+    ensure_sudo
+    sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
 [Unit]
 Description=ydotoold - ydotool daemon
 After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ydotoold
+ExecStart=/usr/bin/ydotoold --socket-path=/tmp/.ydotool_socket --socket-perm=0660 --socket-own=0:992
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 YDOTOOL_EOF
-        sudo systemctl daemon-reload
-    fi
+    sudo systemctl daemon-reload
 
     # Habilitar servicio
     if ! systemctl is-enabled ydotoold.service &>/dev/null; then
@@ -226,6 +224,8 @@ YDOTOOL_EOF
     if ! systemctl is-active ydotoold.service &>/dev/null; then
         ensure_sudo
         sudo systemctl start ydotoold.service
+    else
+        sudo systemctl restart ydotoold.service
     fi
 
     # Agregar usuario al grupo input

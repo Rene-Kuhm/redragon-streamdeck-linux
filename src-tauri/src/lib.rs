@@ -1,25 +1,41 @@
+use ab_glyph::{FontRef, PxScale};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use chrono::{Datelike, Local};
+use image::{imageops, DynamicImage, ImageBuffer, Rgb, RgbImage};
+use imageproc::drawing::{draw_text_mut, text_size};
+use rdev::{listen, Event, EventType, Key};
 use rusb::{Context, DeviceHandle, UsbContext};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Cursor, Read as IoRead, Write as IoWrite};
+use std::io::Cursor;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, RwLock};
 use std::thread;
-use tauri::{Manager, State};
-use image::{DynamicImage, ImageBuffer, Rgb, RgbImage, imageops};
-use imageproc::drawing::{draw_text_mut, text_size};
-use ab_glyph::{FontRef, PxScale};
-use chrono::{Local, Datelike};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::System;
+use tauri::{Manager, State};
 use tungstenite::{connect, Message};
-use sha2::{Sha256, Digest};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use rdev::{listen, Event, EventType, Key};
+
+const YDOTOOL_SOCKET: &str = "/tmp/.ydotool_socket";
+
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        if std::env::var_os("REDRAGON_STREAMDECK_DEBUG").is_some() {
+            eprintln!("DEBUG: {}", format_args!($($arg)*));
+        }
+    };
+}
+
+fn ydotool_command() -> Command {
+    let mut command = Command::new("ydotool");
+    command.env("YDOTOOL_SOCKET", YDOTOOL_SOCKET);
+    command
+}
 
 // USB IDs for Redragon SS-550
 const VENDOR_ID: u16 = 0x0200;
@@ -159,11 +175,16 @@ fn key_to_string(key: &Key) -> String {
 
 // Check if a key is a modifier
 fn is_modifier(key: &Key) -> bool {
-    matches!(key,
-        Key::Alt | Key::AltGr |
-        Key::ControlLeft | Key::ControlRight |
-        Key::ShiftLeft | Key::ShiftRight |
-        Key::MetaLeft | Key::MetaRight
+    matches!(
+        key,
+        Key::Alt
+            | Key::AltGr
+            | Key::ControlLeft
+            | Key::ControlRight
+            | Key::ShiftLeft
+            | Key::ShiftRight
+            | Key::MetaLeft
+            | Key::MetaRight
     )
 }
 
@@ -209,7 +230,7 @@ fn start_keyboard_listener(config_path: PathBuf, icons_path: PathBuf) {
     }
 
     thread::spawn(move || {
-        eprintln!("DEBUG: Global keyboard listener started");
+        debug_log!("Global keyboard listener started");
 
         if let Err(e) = listen(move |event: Event| {
             match event.event_type {
@@ -233,12 +254,21 @@ fn start_keyboard_listener(config_path: PathBuf, icons_path: PathBuf) {
                             if !hotkey_str.is_empty() {
                                 if let Ok(hotkeys) = REGISTERED_HOTKEYS.read() {
                                     if let Some((page, button_id)) = hotkeys.get(&hotkey_str) {
-                                        eprintln!("DEBUG: Hotkey triggered: {} -> page {}, button {}", hotkey_str, page, button_id);
+                                        debug_log!(
+                                            "Hotkey triggered: {} -> page {}, button {}",
+                                            hotkey_str,
+                                            page,
+                                            button_id
+                                        );
                                         // Execute the button action
                                         if let Ok(cfg_path) = GLOBAL_CONFIG_PATH.read() {
                                             if let Ok(icn_path) = GLOBAL_ICONS_PATH.read() {
-                                                if let (Some(cp), Some(ip)) = (cfg_path.as_ref(), icn_path.as_ref()) {
-                                                    trigger_hotkey_action(*page, *button_id, cp, ip);
+                                                if let (Some(cp), Some(ip)) =
+                                                    (cfg_path.as_ref(), icn_path.as_ref())
+                                                {
+                                                    trigger_hotkey_action(
+                                                        *page, *button_id, cp, ip,
+                                                    );
                                                 }
                                             }
                                         }
@@ -294,7 +324,7 @@ fn trigger_hotkey_action(page: usize, button_id: u8, config_path: &PathBuf, icon
                     button.command.clone()
                 };
 
-                eprintln!("DEBUG: Executing hotkey command: {}", cmd);
+                debug_log!("Executing hotkey command: {}", cmd);
 
                 // Execute the command in a new thread
                 let config_path_clone = config_path.clone();
@@ -319,10 +349,7 @@ fn execute_hotkey_command(cmd: &str, config_path: &PathBuf, icons_path: &PathBuf
     // Handle __TYPE_ command
     if cmd.starts_with("__TYPE_") {
         let text = &cmd[7..];
-        Command::new("ydotool")
-            .args(["type", "--clearmodifiers", text])
-            .spawn()
-            .ok();
+        ydotool_command().args(["type", text]).spawn().ok();
         return;
     }
 
@@ -341,9 +368,15 @@ fn execute_hotkey_command(cmd: &str, config_path: &PathBuf, icons_path: &PathBuf
                 let new_page = if cmd == "__NEXT_PAGE__" {
                     (config.current_page + 1) % config.pages.len()
                 } else if cmd == "__PREV_PAGE__" {
-                    if config.current_page == 0 { config.pages.len() - 1 } else { config.current_page - 1 }
+                    if config.current_page == 0 {
+                        config.pages.len() - 1
+                    } else {
+                        config.current_page - 1
+                    }
                 } else if cmd.starts_with("__PAGE_") && cmd.ends_with("__") {
-                    cmd[7..cmd.len()-2].parse::<usize>().unwrap_or(config.current_page)
+                    cmd[7..cmd.len() - 2]
+                        .parse::<usize>()
+                        .unwrap_or(config.current_page)
                 } else {
                     return;
                 };
@@ -354,11 +387,7 @@ fn execute_hotkey_command(cmd: &str, config_path: &PathBuf, icons_path: &PathBuf
     }
 
     // Normal shell command
-    Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .spawn()
-        .ok();
+    Command::new("sh").arg("-c").arg(cmd).spawn().ok();
 }
 
 // Load registered hotkeys from config
@@ -382,7 +411,12 @@ fn load_hotkeys_from_config(config_path: &PathBuf) {
                     if let Some(end_idx) = hotkey_part.find("__") {
                         let hotkey_str = &hotkey_part[..end_idx];
                         if let Ok(button_id) = button_id_str.parse::<u8>() {
-                            eprintln!("DEBUG: Registered hotkey '{}' for page {} button {}", hotkey_str, page_idx, button_id);
+                            debug_log!(
+                                "Registered hotkey '{}' for page {} button {}",
+                                hotkey_str,
+                                page_idx,
+                                button_id
+                            );
                             hotkeys.insert(hotkey_str.to_string(), (page_idx, button_id));
                         }
                     }
@@ -551,24 +585,28 @@ fn find_device() -> Option<DeviceHandle<Context>> {
     for device in context.devices().ok()?.iter() {
         let desc = device.device_descriptor().ok()?;
         if desc.vendor_id() == VENDOR_ID && desc.product_id() == PRODUCT_ID {
-            eprintln!("DEBUG: Found device VID={:04x} PID={:04x}", desc.vendor_id(), desc.product_id());
+            debug_log!(
+                "Found device VID={:04x} PID={:04x}",
+                desc.vendor_id(),
+                desc.product_id()
+            );
 
             #[allow(unused_mut)]
             let mut handle = match device.open() {
                 Ok(h) => {
-                    eprintln!("DEBUG: Device opened successfully");
+                    debug_log!("Device opened successfully");
                     h
                 }
                 Err(e) => {
-                    eprintln!("DEBUG: Failed to open device: {:?}", e);
+                    debug_log!("Failed to open device: {:?}", e);
                     return None;
                 }
             };
 
             // Set configuration (required for some devices)
             match handle.set_active_configuration(1) {
-                Ok(_) => eprintln!("DEBUG: Configuration 1 set"),
-                Err(e) => eprintln!("DEBUG: Could not set configuration (may already be set): {:?}", e),
+                Ok(_) => debug_log!("Configuration 1 set"),
+                Err(e) => debug_log!("Could not set configuration (may already be set): {:?}", e),
             }
 
             // Detach kernel driver if attached (Linux)
@@ -576,22 +614,22 @@ fn find_device() -> Option<DeviceHandle<Context>> {
             {
                 match handle.kernel_driver_active(0) {
                     Ok(true) => {
-                        eprintln!("DEBUG: Kernel driver active, detaching...");
+                        debug_log!("Kernel driver active, detaching...");
                         match handle.detach_kernel_driver(0) {
-                            Ok(_) => eprintln!("DEBUG: Kernel driver detached"),
-                            Err(e) => eprintln!("DEBUG: Failed to detach kernel driver: {:?}", e),
+                            Ok(_) => debug_log!("Kernel driver detached"),
+                            Err(e) => debug_log!("Failed to detach kernel driver: {:?}", e),
                         }
                     }
-                    Ok(false) => eprintln!("DEBUG: No kernel driver active"),
-                    Err(e) => eprintln!("DEBUG: Error checking kernel driver: {:?}", e),
+                    Ok(false) => debug_log!("No kernel driver active"),
+                    Err(e) => debug_log!("Error checking kernel driver: {:?}", e),
                 }
             }
 
             // Claim the interface
             match handle.claim_interface(0) {
-                Ok(_) => eprintln!("DEBUG: Interface 0 claimed successfully"),
+                Ok(_) => debug_log!("Interface 0 claimed successfully"),
                 Err(e) => {
-                    eprintln!("DEBUG: Failed to claim interface 0: {:?}", e);
+                    debug_log!("Failed to claim interface 0: {:?}", e);
                     return None;
                 }
             }
@@ -599,11 +637,15 @@ fn find_device() -> Option<DeviceHandle<Context>> {
             return Some(handle);
         }
     }
-    eprintln!("DEBUG: Device not found");
+    debug_log!("Device not found");
     None
 }
 
-fn send_to_device(handle: &DeviceHandle<Context>, data: &[u8], use_prefix: bool) -> Result<(), String> {
+fn send_to_device(
+    handle: &DeviceHandle<Context>,
+    data: &[u8],
+    use_prefix: bool,
+) -> Result<(), String> {
     // Build the full packet: prefix (5 bytes) + data (padded to 512 bytes)
     let mut packet = Vec::with_capacity(CMD_PREFIX.len() + PACKET_SIZE);
 
@@ -614,22 +656,26 @@ fn send_to_device(handle: &DeviceHandle<Context>, data: &[u8], use_prefix: bool)
     packet.extend_from_slice(data);
 
     // Pad to full packet size
-    let total_size = if use_prefix { CMD_PREFIX.len() + PACKET_SIZE } else { PACKET_SIZE };
+    let total_size = if use_prefix {
+        CMD_PREFIX.len() + PACKET_SIZE
+    } else {
+        PACKET_SIZE
+    };
     while packet.len() < total_size {
         packet.push(0x00);
     }
 
-    eprintln!("DEBUG: Sending {} bytes to endpoint 0x01", packet.len());
-    eprintln!("DEBUG: First 20 bytes: {:02x?}", &packet[..20.min(packet.len())]);
+    debug_log!("Sending {} bytes to endpoint 0x01", packet.len());
+    debug_log!("First 20 bytes: {:02x?}", &packet[..20.min(packet.len())]);
 
     // Endpoint 0x01 is the OUT endpoint for this device
     match handle.write_interrupt(0x01, &packet, Duration::from_millis(1000)) {
         Ok(bytes_written) => {
-            eprintln!("DEBUG: Successfully wrote {} bytes", bytes_written);
+            debug_log!("Successfully wrote {} bytes", bytes_written);
             Ok(())
         }
         Err(e) => {
-            eprintln!("DEBUG: USB write error: {:?}", e);
+            debug_log!("USB write error: {:?}", e);
             Err(format!("USB write error: {}", e))
         }
     }
@@ -711,7 +757,8 @@ fn generate_button_image(button: &ButtonConfig, icons_path: &PathBuf) -> Result<
         if icon_path.exists() {
             match image::open(&icon_path) {
                 Ok(icon) => {
-                    let resized = icon.resize_exact(BUTTON_SIZE, BUTTON_SIZE, imageops::FilterType::Lanczos3);
+                    let resized =
+                        icon.resize_exact(BUTTON_SIZE, BUTTON_SIZE, imageops::FilterType::Lanczos3);
                     resized.to_rgb8()
                 }
                 Err(_) => {
@@ -764,7 +811,15 @@ fn generate_button_image(button: &ButtonConfig, icons_path: &PathBuf) -> Result<
                 }
             }
 
-            draw_text_mut(&mut img, Rgb([255, 255, 255]), x, y, scale, &font, &display_text);
+            draw_text_mut(
+                &mut img,
+                Rgb([255, 255, 255]),
+                x,
+                y,
+                scale,
+                &font,
+                &display_text,
+            );
         }
     }
 
@@ -776,15 +831,20 @@ fn generate_button_image(button: &ButtonConfig, icons_path: &PathBuf) -> Result<
     let mut cursor = Cursor::new(&mut jpeg_data);
 
     let dynamic_img = DynamicImage::ImageRgb8(rotated);
-    dynamic_img.write_to(&mut cursor, image::ImageFormat::Jpeg)
+    dynamic_img
+        .write_to(&mut cursor, image::ImageFormat::Jpeg)
         .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
 
-    eprintln!("DEBUG: Generated button image, {} bytes JPEG", jpeg_data.len());
+    debug_log!("Generated button image, {} bytes JPEG", jpeg_data.len());
     Ok(jpeg_data)
 }
 
 // Set image for a specific key
-fn set_key_image(handle: &DeviceHandle<Context>, key_id: u8, jpeg_data: &[u8]) -> Result<(), String> {
+fn set_key_image(
+    handle: &DeviceHandle<Context>,
+    key_id: u8,
+    jpeg_data: &[u8],
+) -> Result<(), String> {
     let size_bytes = size_to_bytes(jpeg_data.len());
 
     // Build BAT command: BAT + size(4 bytes) + keyId
@@ -794,7 +854,11 @@ fn set_key_image(handle: &DeviceHandle<Context>, key_id: u8, jpeg_data: &[u8]) -
     cmd_data.extend_from_slice(&size_bytes);
     cmd_data.push(key_id);
 
-    eprintln!("DEBUG: Setting key {} with {} bytes image", key_id, jpeg_data.len());
+    debug_log!(
+        "Setting key {} with {} bytes image",
+        key_id,
+        jpeg_data.len()
+    );
 
     // Send BAT command
     send_to_device(handle, &cmd_data, true)?;
@@ -809,8 +873,13 @@ fn set_key_image(handle: &DeviceHandle<Context>, key_id: u8, jpeg_data: &[u8]) -
 }
 
 // Load all buttons for a page to the device
-fn load_page_to_device(handle: &DeviceHandle<Context>, page: &Page, brightness: u8, icons_path: &PathBuf) -> Result<(), String> {
-    eprintln!("DEBUG: Loading page '{}' to device", page.name);
+fn load_page_to_device(
+    handle: &DeviceHandle<Context>,
+    page: &Page,
+    brightness: u8,
+    icons_path: &PathBuf,
+) -> Result<(), String> {
+    debug_log!("Loading page '{}' to device", page.name);
 
     // Wake and clear screen first
     wake_screen(handle)?;
@@ -822,15 +891,16 @@ fn load_page_to_device(handle: &DeviceHandle<Context>, page: &Page, brightness: 
         if let Ok(key_id) = key_id_str.parse::<u8>() {
             if key_id >= 1 && key_id <= 15 {
                 // Only send if button has content
-                if !button.label.is_empty() || !button.icon.is_empty() || button.color != "#1a1a2e" {
+                if !button.label.is_empty() || !button.icon.is_empty() || button.color != "#1a1a2e"
+                {
                     match generate_button_image(button, icons_path) {
                         Ok(jpeg_data) => {
                             if let Err(e) = set_key_image(handle, key_id, &jpeg_data) {
-                                eprintln!("DEBUG: Failed to set key {}: {}", key_id, e);
+                                debug_log!("Failed to set key {}: {}", key_id, e);
                             }
                         }
                         Err(e) => {
-                            eprintln!("DEBUG: Failed to generate image for key {}: {}", key_id, e);
+                            debug_log!("Failed to generate image for key {}: {}", key_id, e);
                         }
                     }
                 }
@@ -838,7 +908,7 @@ fn load_page_to_device(handle: &DeviceHandle<Context>, page: &Page, brightness: 
         }
     }
 
-    eprintln!("DEBUG: Page loaded successfully");
+    debug_log!("Page loaded successfully");
     Ok(())
 }
 
@@ -850,9 +920,9 @@ fn load_page_to_device(handle: &DeviceHandle<Context>, page: &Page, brightness: 
 fn key_name_to_code(key: &str) -> Option<&'static str> {
     match key.to_lowercase().as_str() {
         // Modifiers
-        "ctrl" | "control" => Some("29"),      // KEY_LEFTCTRL
-        "shift" => Some("42"),                  // KEY_LEFTSHIFT
-        "alt" => Some("56"),                    // KEY_LEFTALT
+        "ctrl" | "control" => Some("29"),        // KEY_LEFTCTRL
+        "shift" => Some("42"),                   // KEY_LEFTSHIFT
+        "alt" => Some("56"),                     // KEY_LEFTALT
         "super" | "win" | "meta" => Some("125"), // KEY_LEFTMETA
 
         // Function keys
@@ -972,7 +1042,7 @@ fn key_name_to_code(key: &str) -> Option<&'static str> {
         "kpdot" | "numpaddot" | "kpperiod" => Some("83"),
 
         // Additional useful keys
-        "menu" | "contextmenu" => Some("127"),  // KEY_COMPOSE / context menu
+        "menu" | "contextmenu" => Some("127"), // KEY_COMPOSE / context menu
         "rctrl" | "rightctrl" => Some("97"),
         "rshift" | "rightshift" => Some("54"),
         "ralt" | "rightalt" | "altgr" => Some("100"),
@@ -1014,13 +1084,9 @@ fn execute_hotkey_sync(keys: &str) {
 
     if !key_codes.is_empty() {
         let key_sequence = key_codes.join(" ");
-        eprintln!("DEBUG: ydotool key {}", key_sequence);
+        debug_log!("ydotool key {}", key_sequence);
 
-        Command::new("ydotool")
-            .arg("key")
-            .args(key_codes)
-            .status()
-            .ok();
+        ydotool_command().arg("key").args(key_codes).status().ok();
     }
 }
 
@@ -1142,16 +1208,16 @@ fn stop_timer() {
 
 // Check if a command is a widget that needs dynamic updates
 fn is_widget_command(cmd: &str) -> bool {
-    cmd.starts_with("__CLOCK") ||
-    cmd.starts_with("__DATE") ||
-    cmd.starts_with("__WEEKDAY") ||
-    cmd.starts_with("__CPU") ||
-    cmd.starts_with("__RAM") ||
-    cmd.starts_with("__TEMP") ||
-    cmd.starts_with("__TIMER") ||
-    cmd == "__OBS_STATUS__" ||
-    cmd == "__TWITCH_VIEWERS__" ||
-    cmd == "__TWITCH_FOLLOWERS__"
+    cmd.starts_with("__CLOCK")
+        || cmd.starts_with("__DATE")
+        || cmd.starts_with("__WEEKDAY")
+        || cmd.starts_with("__CPU")
+        || cmd.starts_with("__RAM")
+        || cmd.starts_with("__TEMP")
+        || cmd.starts_with("__TIMER")
+        || cmd == "__OBS_STATUS__"
+        || cmd == "__TWITCH_VIEWERS__"
+        || cmd == "__TWITCH_FOLLOWERS__"
 }
 
 // Get the display text for a widget command
@@ -1196,6 +1262,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Default, Clone)]
+#[allow(dead_code)]
 struct ObsState {
     connected: bool,
     streaming: bool,
@@ -1214,20 +1281,23 @@ struct ObsMessage {
 }
 
 // Connect to OBS WebSocket and authenticate
+#[allow(dead_code)]
 fn obs_connect(host: &str, port: u16, password: Option<&str>) -> Result<(), String> {
     let url = format!("ws://{}:{}", host, port);
-    eprintln!("DEBUG: OBS connecting to {}", url);
+    debug_log!("OBS connecting to {}", url);
 
-    let (mut socket, _response) = connect(&url)
-        .map_err(|e| format!("OBS connection failed: {}", e))?;
+    let (mut socket, _response) =
+        connect(&url).map_err(|e| format!("OBS connection failed: {}", e))?;
 
     // Read Hello message (op=0)
-    let hello_msg = socket.read()
+    let hello_msg = socket
+        .read()
         .map_err(|e| format!("Failed to read OBS Hello: {}", e))?;
 
     let hello: ObsMessage = match hello_msg {
-        Message::Text(text) => serde_json::from_str(&text)
-            .map_err(|e| format!("Failed to parse Hello: {}", e))?,
+        Message::Text(text) => {
+            serde_json::from_str(&text).map_err(|e| format!("Failed to parse Hello: {}", e))?
+        }
         _ => return Err("Unexpected message type".to_string()),
     };
 
@@ -1235,17 +1305,19 @@ fn obs_connect(host: &str, port: u16, password: Option<&str>) -> Result<(), Stri
         return Err(format!("Expected Hello (op=0), got op={}", hello.op));
     }
 
-    eprintln!("DEBUG: OBS Hello received");
+    debug_log!("OBS Hello received");
 
     // Check if authentication is required
     let auth_data = hello.d.get("authentication");
 
     let identify_data = if let (Some(auth), Some(pwd)) = (auth_data, password) {
         // Authentication required
-        let challenge = auth.get("challenge")
+        let challenge = auth
+            .get("challenge")
             .and_then(|v| v.as_str())
             .ok_or("Missing challenge")?;
-        let salt = auth.get("salt")
+        let salt = auth
+            .get("salt")
             .and_then(|v| v.as_str())
             .ok_or("Missing salt")?;
 
@@ -1268,16 +1340,21 @@ fn obs_connect(host: &str, port: u16, password: Option<&str>) -> Result<(), Stri
         op: 1,
         d: identify_data,
     };
-    socket.send(Message::Text(serde_json::to_string(&identify).unwrap().into()))
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&identify).unwrap().into(),
+        ))
         .map_err(|e| format!("Failed to send Identify: {}", e))?;
 
     // Read Identified response (op=2)
-    let identified_msg = socket.read()
+    let identified_msg = socket
+        .read()
         .map_err(|e| format!("Failed to read Identified: {}", e))?;
 
     let identified: ObsMessage = match identified_msg {
-        Message::Text(text) => serde_json::from_str(&text)
-            .map_err(|e| format!("Failed to parse Identified: {}", e))?,
+        Message::Text(text) => {
+            serde_json::from_str(&text).map_err(|e| format!("Failed to parse Identified: {}", e))?
+        }
         _ => return Err("Unexpected message type".to_string()),
     };
 
@@ -1285,7 +1362,7 @@ fn obs_connect(host: &str, port: u16, password: Option<&str>) -> Result<(), Stri
         return Err(format!("Authentication failed (op={})", identified.op));
     }
 
-    eprintln!("DEBUG: OBS authenticated successfully");
+    debug_log!("OBS authenticated successfully");
 
     // Update state
     if let Ok(mut state) = OBS_STATE.write() {
@@ -1312,33 +1389,50 @@ fn generate_obs_auth(password: &str, challenge: &str, salt: &str) -> String {
 }
 
 // Send OBS request and get response
-fn obs_request(request_type: &str, request_data: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+fn obs_request(
+    request_type: &str,
+    request_data: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
     let url = get_obs_websocket_url();
     let password = get_obs_password();
 
-    let (mut socket, _) = connect(&url)
-        .map_err(|e| format!("OBS connection failed: {}", e))?;
+    let (mut socket, _) = connect(&url).map_err(|e| format!("OBS connection failed: {}", e))?;
 
     // Read Hello
     let hello_msg = socket.read().map_err(|e| format!("Read error: {}", e))?;
     let hello: ObsMessage = match hello_msg {
-        Message::Text(text) => serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?,
+        Message::Text(text) => {
+            serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?
+        }
         _ => return Err("Unexpected message".to_string()),
     };
 
     // Authenticate
     let auth_data = hello.d.get("authentication");
     let identify_data = if let Some(auth) = auth_data {
-        let challenge = auth.get("challenge").and_then(|v| v.as_str()).ok_or("Missing challenge")?;
-        let salt = auth.get("salt").and_then(|v| v.as_str()).ok_or("Missing salt")?;
+        let challenge = auth
+            .get("challenge")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing challenge")?;
+        let salt = auth
+            .get("salt")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing salt")?;
         let auth_string = generate_obs_auth(&password, challenge, salt);
         serde_json::json!({"rpcVersion": 1, "authentication": auth_string})
     } else {
         serde_json::json!({"rpcVersion": 1})
     };
 
-    let identify = ObsMessage { op: 1, d: identify_data };
-    socket.send(Message::Text(serde_json::to_string(&identify).unwrap().into())).ok();
+    let identify = ObsMessage {
+        op: 1,
+        d: identify_data,
+    };
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&identify).unwrap().into(),
+        ))
+        .ok();
 
     let _ = socket.read(); // Read Identified
 
@@ -1353,23 +1447,39 @@ fn obs_request(request_type: &str, request_data: Option<serde_json::Value>) -> R
     }
 
     let request = ObsMessage { op: 6, d: req_data };
-    socket.send(Message::Text(serde_json::to_string(&request).unwrap().into()))
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&request).unwrap().into(),
+        ))
         .map_err(|e| format!("Send error: {}", e))?;
 
     // Read response (op=7)
     let response_msg = socket.read().map_err(|e| format!("Read error: {}", e))?;
     let response: ObsMessage = match response_msg {
-        Message::Text(text) => serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?,
+        Message::Text(text) => {
+            serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?
+        }
         _ => return Err("Unexpected message".to_string()),
     };
 
     if response.op == 7 {
         let status = response.d.get("requestStatus");
         if let Some(status) = status {
-            if status.get("result").and_then(|v| v.as_bool()).unwrap_or(false) {
-                return Ok(response.d.get("responseData").cloned().unwrap_or(serde_json::Value::Null));
+            if status
+                .get("result")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                return Ok(response
+                    .d
+                    .get("responseData")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null));
             } else {
-                let comment = status.get("comment").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                let comment = status
+                    .get("comment")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
                 return Err(comment.to_string());
             }
         }
@@ -1379,7 +1489,10 @@ fn obs_request(request_type: &str, request_data: Option<serde_json::Value>) -> R
 }
 
 // Update OBS status internally
-fn obs_update_status_internal(socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>) -> Result<(), String> {
+#[allow(dead_code)]
+fn obs_update_status_internal(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+) -> Result<(), String> {
     // Get streaming status
     let req_id = format!("status_{}", chrono_lite());
     let request = ObsMessage {
@@ -1389,13 +1502,20 @@ fn obs_update_status_internal(socket: &mut tungstenite::WebSocket<tungstenite::s
             "requestId": req_id
         }),
     };
-    socket.send(Message::Text(serde_json::to_string(&request).unwrap().into())).ok();
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&request).unwrap().into(),
+        ))
+        .ok();
 
     if let Ok(Message::Text(text)) = socket.read() {
         if let Ok(response) = serde_json::from_str::<ObsMessage>(&text) {
             if response.op == 7 {
                 if let Some(data) = response.d.get("responseData") {
-                    let streaming = data.get("outputActive").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let streaming = data
+                        .get("outputActive")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     if let Ok(mut state) = OBS_STATE.write() {
                         state.streaming = streaming;
                     }
@@ -1413,13 +1533,20 @@ fn obs_update_status_internal(socket: &mut tungstenite::WebSocket<tungstenite::s
             "requestId": req_id
         }),
     };
-    socket.send(Message::Text(serde_json::to_string(&request).unwrap().into())).ok();
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&request).unwrap().into(),
+        ))
+        .ok();
 
     if let Ok(Message::Text(text)) = socket.read() {
         if let Ok(response) = serde_json::from_str::<ObsMessage>(&text) {
             if response.op == 7 {
                 if let Some(data) = response.d.get("responseData") {
-                    let recording = data.get("outputActive").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let recording = data
+                        .get("outputActive")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     if let Ok(mut state) = OBS_STATE.write() {
                         state.recording = recording;
                     }
@@ -1437,13 +1564,18 @@ fn obs_update_status_internal(socket: &mut tungstenite::WebSocket<tungstenite::s
             "requestId": req_id
         }),
     };
-    socket.send(Message::Text(serde_json::to_string(&request).unwrap().into())).ok();
+    socket
+        .send(Message::Text(
+            serde_json::to_string(&request).unwrap().into(),
+        ))
+        .ok();
 
     if let Ok(Message::Text(text)) = socket.read() {
         if let Ok(response) = serde_json::from_str::<ObsMessage>(&text) {
             if response.op == 7 {
                 if let Some(data) = response.d.get("responseData") {
-                    let scene = data.get("currentProgramSceneName")
+                    let scene = data
+                        .get("currentProgramSceneName")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -1469,33 +1601,35 @@ fn get_obs_password() -> String {
 
 // OBS Commands for button presses
 fn obs_toggle_stream() {
-    thread::spawn(|| {
-        match obs_request("ToggleStream", None) {
-            Ok(_) => eprintln!("DEBUG: OBS stream toggled"),
-            Err(e) => eprintln!("DEBUG: OBS toggle stream error: {}", e),
-        }
+    thread::spawn(|| match obs_request("ToggleStream", None) {
+        Ok(_) => debug_log!("OBS stream toggled"),
+        Err(e) => debug_log!("OBS toggle stream error: {}", e),
     });
 }
 
 fn obs_toggle_record() {
-    thread::spawn(|| {
-        match obs_request("ToggleRecord", None) {
-            Ok(_) => eprintln!("DEBUG: OBS record toggled"),
-            Err(e) => eprintln!("DEBUG: OBS toggle record error: {}", e),
-        }
+    thread::spawn(|| match obs_request("ToggleRecord", None) {
+        Ok(_) => debug_log!("OBS record toggled"),
+        Err(e) => debug_log!("OBS toggle record error: {}", e),
     });
 }
 
 fn obs_toggle_mute() {
     thread::spawn(|| {
         // Toggle mute for default audio input
-        match obs_request("ToggleInputMute", Some(serde_json::json!({"inputName": "Mic/Aux"}))) {
-            Ok(_) => eprintln!("DEBUG: OBS mic mute toggled"),
+        match obs_request(
+            "ToggleInputMute",
+            Some(serde_json::json!({"inputName": "Mic/Aux"})),
+        ) {
+            Ok(_) => debug_log!("OBS mic mute toggled"),
             Err(e) => {
                 // Try alternative input name
-                match obs_request("ToggleInputMute", Some(serde_json::json!({"inputName": "Desktop Audio"}))) {
-                    Ok(_) => eprintln!("DEBUG: OBS desktop audio mute toggled"),
-                    Err(e2) => eprintln!("DEBUG: OBS toggle mute error: {} / {}", e, e2),
+                match obs_request(
+                    "ToggleInputMute",
+                    Some(serde_json::json!({"inputName": "Desktop Audio"})),
+                ) {
+                    Ok(_) => debug_log!("OBS desktop audio mute toggled"),
+                    Err(e2) => debug_log!("OBS toggle mute error: {} / {}", e, e2),
                 }
             }
         }
@@ -1505,9 +1639,12 @@ fn obs_toggle_mute() {
 fn obs_set_scene(scene_name: &str) {
     let scene = scene_name.to_string();
     thread::spawn(move || {
-        match obs_request("SetCurrentProgramScene", Some(serde_json::json!({"sceneName": scene}))) {
-            Ok(_) => eprintln!("DEBUG: OBS scene changed to: {}", scene),
-            Err(e) => eprintln!("DEBUG: OBS set scene error: {}", e),
+        match obs_request(
+            "SetCurrentProgramScene",
+            Some(serde_json::json!({"sceneName": scene})),
+        ) {
+            Ok(_) => debug_log!("OBS scene changed to: {}", scene),
+            Err(e) => debug_log!("OBS set scene error: {}", e),
         }
     });
 }
@@ -1517,14 +1654,20 @@ fn get_obs_status_text() -> String {
     // Try to update status first (non-blocking)
     let _ = thread::spawn(|| {
         if let Ok(data) = obs_request("GetStreamStatus", None) {
-            let streaming = data.get("outputActive").and_then(|v| v.as_bool()).unwrap_or(false);
+            let streaming = data
+                .get("outputActive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if let Ok(mut state) = OBS_STATE.write() {
                 state.streaming = streaming;
                 state.connected = true;
             }
         }
         if let Ok(data) = obs_request("GetRecordStatus", None) {
-            let recording = data.get("outputActive").and_then(|v| v.as_bool()).unwrap_or(false);
+            let recording = data
+                .get("outputActive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if let Ok(mut state) = OBS_STATE.write() {
                 state.recording = recording;
             }
@@ -1591,14 +1734,16 @@ fn twitch_init() -> Result<(), String> {
     // Get broadcaster ID from channel name
     let client = reqwest::blocking::Client::new();
     let resp = client
-        .get(format!("https://api.twitch.tv/helix/users?login={}", channel))
+        .get(format!(
+            "https://api.twitch.tv/helix/users?login={}",
+            channel
+        ))
         .header("Client-ID", &client_id)
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .map_err(|e| format!("Twitch API error: {}", e))?;
 
-    let data: serde_json::Value = resp.json()
-        .map_err(|e| format!("Parse error: {}", e))?;
+    let data: serde_json::Value = resp.json().map_err(|e| format!("Parse error: {}", e))?;
 
     let broadcaster_id = data["data"][0]["id"]
         .as_str()
@@ -1623,12 +1768,19 @@ fn twitch_get_viewers() -> Result<u32, String> {
         if !state.connected || state.broadcaster_id.is_empty() {
             return Err("Twitch not connected".to_string());
         }
-        (state.client_id.clone(), state.access_token.clone(), state.broadcaster_id.clone())
+        (
+            state.client_id.clone(),
+            state.access_token.clone(),
+            state.broadcaster_id.clone(),
+        )
     };
 
     let client = reqwest::blocking::Client::new();
     let resp = client
-        .get(format!("https://api.twitch.tv/helix/streams?user_id={}", broadcaster_id))
+        .get(format!(
+            "https://api.twitch.tv/helix/streams?user_id={}",
+            broadcaster_id
+        ))
         .header("Client-ID", &client_id)
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
@@ -1636,11 +1788,12 @@ fn twitch_get_viewers() -> Result<u32, String> {
 
     let data: serde_json::Value = resp.json().map_err(|e| format!("Parse error: {}", e))?;
 
-    let viewers = data["data"][0]["viewer_count"]
-        .as_u64()
-        .unwrap_or(0) as u32;
+    let viewers = data["data"][0]["viewer_count"].as_u64().unwrap_or(0) as u32;
 
-    let is_live = data["data"].as_array().map(|a| !a.is_empty()).unwrap_or(false);
+    let is_live = data["data"]
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
 
     if let Ok(mut state) = TWITCH_STATE.write() {
         state.viewers = viewers;
@@ -1658,12 +1811,19 @@ fn twitch_get_followers() -> Result<u32, String> {
         if !state.connected || state.broadcaster_id.is_empty() {
             return Err("Twitch not connected".to_string());
         }
-        (state.client_id.clone(), state.access_token.clone(), state.broadcaster_id.clone())
+        (
+            state.client_id.clone(),
+            state.access_token.clone(),
+            state.broadcaster_id.clone(),
+        )
     };
 
     let client = reqwest::blocking::Client::new();
     let resp = client
-        .get(format!("https://api.twitch.tv/helix/channels/followers?broadcaster_id={}", broadcaster_id))
+        .get(format!(
+            "https://api.twitch.tv/helix/channels/followers?broadcaster_id={}",
+            broadcaster_id
+        ))
         .header("Client-ID", &client_id)
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
@@ -1686,14 +1846,18 @@ fn twitch_send_chat(message: &str) {
     thread::spawn(move || {
         let (client_id, access_token, broadcaster_id) = {
             if let Ok(state) = TWITCH_STATE.read() {
-                (state.client_id.clone(), state.access_token.clone(), state.broadcaster_id.clone())
+                (
+                    state.client_id.clone(),
+                    state.access_token.clone(),
+                    state.broadcaster_id.clone(),
+                )
             } else {
                 return;
             }
         };
 
         if broadcaster_id.is_empty() {
-            eprintln!("DEBUG: Twitch not connected");
+            debug_log!("Twitch not connected");
             return;
         }
 
@@ -1710,7 +1874,7 @@ fn twitch_send_chat(message: &str) {
             }))
             .send();
 
-        eprintln!("DEBUG: Twitch chat message sent: {}", msg);
+        debug_log!("Twitch chat message sent: {}", msg);
     });
 }
 
@@ -1719,20 +1883,27 @@ fn twitch_create_clip() {
     thread::spawn(|| {
         let (client_id, access_token, broadcaster_id) = {
             if let Ok(state) = TWITCH_STATE.read() {
-                (state.client_id.clone(), state.access_token.clone(), state.broadcaster_id.clone())
+                (
+                    state.client_id.clone(),
+                    state.access_token.clone(),
+                    state.broadcaster_id.clone(),
+                )
             } else {
                 return;
             }
         };
 
         if broadcaster_id.is_empty() {
-            eprintln!("DEBUG: Twitch not connected");
+            debug_log!("Twitch not connected");
             return;
         }
 
         let client = reqwest::blocking::Client::new();
         match client
-            .post(format!("https://api.twitch.tv/helix/clips?broadcaster_id={}", broadcaster_id))
+            .post(format!(
+                "https://api.twitch.tv/helix/clips?broadcaster_id={}",
+                broadcaster_id
+            ))
             .header("Client-ID", &client_id)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
@@ -1740,11 +1911,11 @@ fn twitch_create_clip() {
             Ok(resp) => {
                 if let Ok(data) = resp.json::<serde_json::Value>() {
                     if let Some(clip_id) = data["data"][0]["id"].as_str() {
-                        eprintln!("DEBUG: Twitch clip created: {}", clip_id);
+                        debug_log!("Twitch clip created: {}", clip_id);
                     }
                 }
             }
-            Err(e) => eprintln!("DEBUG: Twitch create clip error: {}", e),
+            Err(e) => debug_log!("Twitch create clip error: {}", e),
         }
     });
 }
@@ -1754,14 +1925,18 @@ fn twitch_run_commercial(length: u32) {
     thread::spawn(move || {
         let (client_id, access_token, broadcaster_id) = {
             if let Ok(state) = TWITCH_STATE.read() {
-                (state.client_id.clone(), state.access_token.clone(), state.broadcaster_id.clone())
+                (
+                    state.client_id.clone(),
+                    state.access_token.clone(),
+                    state.broadcaster_id.clone(),
+                )
             } else {
                 return;
             }
         };
 
         if broadcaster_id.is_empty() {
-            eprintln!("DEBUG: Twitch not connected");
+            debug_log!("Twitch not connected");
             return;
         }
 
@@ -1777,7 +1952,7 @@ fn twitch_run_commercial(length: u32) {
             }))
             .send();
 
-        eprintln!("DEBUG: Twitch commercial started: {}s", length);
+        debug_log!("Twitch commercial started: {}s", length);
     });
 }
 
@@ -1866,12 +2041,8 @@ fn read_key_press(handle: &DeviceHandle<Context>) -> Result<(u8, u8), String> {
                 Err("Invalid data length".to_string())
             }
         }
-        Err(rusb::Error::Timeout) => {
-            Err("timeout".to_string())
-        }
-        Err(e) => {
-            Err(format!("USB read error: {}", e))
-        }
+        Err(rusb::Error::Timeout) => Err("timeout".to_string()),
+        Err(e) => Err(format!("USB read error: {}", e)),
     }
 }
 
@@ -1901,7 +2072,7 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     }
 
     let cmd = &button.command;
-    eprintln!("DEBUG: Button {} pressed, command: {}", key_id, cmd);
+    debug_log!("Button {} pressed, command: {}", key_id, cmd);
 
     // Handle special page navigation commands
     if cmd == "__NEXT_PAGE__" {
@@ -1922,7 +2093,7 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
 
     // Check for __PAGE_N__ pattern
     if cmd.starts_with("__PAGE_") && cmd.ends_with("__") {
-        let page_str = &cmd[7..cmd.len()-2];
+        let page_str = &cmd[7..cmd.len() - 2];
         if let Ok(target_page) = page_str.parse::<usize>() {
             if target_page < config.pages.len() {
                 change_page(target_page, config_path, icons_path);
@@ -1933,18 +2104,18 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
 
     // Handle __TIMER_N__ - start/stop timer (N = minutes)
     if cmd.starts_with("__TIMER_") && cmd.ends_with("__") {
-        let timer_str = &cmd[8..cmd.len()-2];
+        let timer_str = &cmd[8..cmd.len() - 2];
         if let Ok(minutes) = timer_str.parse::<u64>() {
             // Toggle timer: if running, stop; if stopped, start
             let current_start = TIMER_START.load(Ordering::Relaxed);
             if current_start > 0 {
                 // Timer is running, stop it
                 stop_timer();
-                eprintln!("DEBUG: Timer stopped");
+                debug_log!("Timer stopped");
             } else {
                 // Start timer with N minutes
                 start_timer(minutes * 60);
-                eprintln!("DEBUG: Timer started for {} minutes", minutes);
+                debug_log!("Timer started for {} minutes", minutes);
             }
             // Request refresh to update display
             request_refresh();
@@ -1953,11 +2124,18 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     }
 
     // Handle widget display commands (they don't execute anything, just display)
-    if cmd == "__CLOCK__" || cmd == "__CLOCK_S__" ||
-       cmd == "__DATE__" || cmd == "__DATE_FULL__" ||
-       cmd == "__WEEKDAY__" ||
-       cmd == "__CPU__" || cmd == "__RAM__" || cmd == "__TEMP__" ||
-       cmd == "__OBS_STATUS__" || cmd == "__TWITCH_VIEWERS__" || cmd == "__TWITCH_FOLLOWERS__" {
+    if cmd == "__CLOCK__"
+        || cmd == "__CLOCK_S__"
+        || cmd == "__DATE__"
+        || cmd == "__DATE_FULL__"
+        || cmd == "__WEEKDAY__"
+        || cmd == "__CPU__"
+        || cmd == "__RAM__"
+        || cmd == "__TEMP__"
+        || cmd == "__OBS_STATUS__"
+        || cmd == "__TWITCH_VIEWERS__"
+        || cmd == "__TWITCH_FOLLOWERS__"
+    {
         // Widgets don't execute anything when pressed, they just display info
         // But we can request a refresh to show updated value
         request_refresh();
@@ -1966,24 +2144,24 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
 
     // Handle OBS commands
     if cmd == "__OBS_STREAM__" {
-        eprintln!("DEBUG: OBS toggle stream");
+        debug_log!("OBS toggle stream");
         obs_toggle_stream();
         return;
     }
     if cmd == "__OBS_RECORD__" {
-        eprintln!("DEBUG: OBS toggle record");
+        debug_log!("OBS toggle record");
         obs_toggle_record();
         return;
     }
     if cmd == "__OBS_MUTE__" {
-        eprintln!("DEBUG: OBS toggle mute");
+        debug_log!("OBS toggle mute");
         obs_toggle_mute();
         return;
     }
     // Handle __OBS_SCENE_scenename pattern
     if cmd.starts_with("__OBS_SCENE_") {
         let scene_name = &cmd[12..];
-        eprintln!("DEBUG: OBS set scene: {}", scene_name);
+        debug_log!("OBS set scene: {}", scene_name);
         obs_set_scene(scene_name);
         return;
     }
@@ -1992,21 +2170,21 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     // __TWITCH_CHAT_message - send chat message
     if cmd.starts_with("__TWITCH_CHAT_") {
         let message = &cmd[14..];
-        eprintln!("DEBUG: Twitch chat: {}", message);
+        debug_log!("Twitch chat: {}", message);
         twitch_send_chat(message);
         return;
     }
     // __TWITCH_CLIP__ - create clip
     if cmd == "__TWITCH_CLIP__" {
-        eprintln!("DEBUG: Twitch create clip");
+        debug_log!("Twitch create clip");
         twitch_create_clip();
         return;
     }
     // __TWITCH_AD_30__, __TWITCH_AD_60__, etc. - run commercial
     if cmd.starts_with("__TWITCH_AD_") && cmd.ends_with("__") {
-        let length_str = &cmd[12..cmd.len()-2];
+        let length_str = &cmd[12..cmd.len() - 2];
         if let Ok(length) = length_str.parse::<u32>() {
-            eprintln!("DEBUG: Twitch commercial: {}s", length);
+            debug_log!("Twitch commercial: {}s", length);
             twitch_run_commercial(length);
         }
         return;
@@ -2015,13 +2193,10 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     // Handle __URL_ command - open URL in default browser
     if cmd.starts_with("__URL_") {
         let url = &cmd[6..];
-        eprintln!("DEBUG: Opening URL: {}", url);
+        debug_log!("Opening URL: {}", url);
         let url_clone = url.to_string();
         thread::spawn(move || {
-            Command::new("xdg-open")
-                .arg(&url_clone)
-                .spawn()
-                .ok();
+            Command::new("xdg-open").arg(&url_clone).spawn().ok();
         });
         return;
     }
@@ -2029,13 +2204,10 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     // Handle __TYPE_ command - type text using ydotool
     if cmd.starts_with("__TYPE_") {
         let text = &cmd[7..];
-        eprintln!("DEBUG: Typing text: {}", text);
+        debug_log!("Typing text: {}", text);
         let text_clone = text.to_string();
         thread::spawn(move || {
-            Command::new("ydotool")
-                .args(["type", "--clearmodifiers", &text_clone])
-                .spawn()
-                .ok();
+            ydotool_command().args(["type", &text_clone]).spawn().ok();
         });
         return;
     }
@@ -2043,7 +2215,7 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     // Handle __KEY_ command - simulate key press using ydotool
     if cmd.starts_with("__KEY_") {
         let keys = &cmd[6..];
-        eprintln!("DEBUG: Pressing keys: {}", keys);
+        debug_log!("Pressing keys: {}", keys);
         execute_hotkey(keys);
         return;
     }
@@ -2051,23 +2223,20 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     // Handle __MULTI_ command - execute multiple commands in sequence
     if cmd.starts_with("__MULTI_") {
         let commands = &cmd[8..];
-        eprintln!("DEBUG: Executing multi-action: {}", commands);
+        debug_log!("Executing multi-action: {}", commands);
         let commands_clone = commands.to_string();
         thread::spawn(move || {
             for single_cmd in commands_clone.split(";;") {
                 let trimmed = single_cmd.trim();
                 if !trimmed.is_empty() {
-                    eprintln!("DEBUG: Multi-action step: {}", trimmed);
+                    debug_log!("Multi-action step: {}", trimmed);
                     // Handle special commands within multi-action
                     if trimmed.starts_with("__URL_") {
                         let url = &trimmed[6..];
                         Command::new("xdg-open").arg(url).spawn().ok();
                     } else if trimmed.starts_with("__TYPE_") {
                         let text = &trimmed[7..];
-                        Command::new("ydotool")
-                            .args(["type", "--clearmodifiers", text])
-                            .status()
-                            .ok();
+                        ydotool_command().args(["type", text]).status().ok();
                     } else if trimmed.starts_with("__KEY_") {
                         let keys = &trimmed[6..];
                         execute_hotkey_sync(keys);
@@ -2077,11 +2246,7 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
                         }
                     } else {
                         // Normal shell command
-                        Command::new("sh")
-                            .arg("-c")
-                            .arg(trimmed)
-                            .status()
-                            .ok();
+                        Command::new("sh").arg("-c").arg(trimmed).status().ok();
                     }
                     // Small delay between actions
                     thread::sleep(Duration::from_millis(100));
@@ -2092,14 +2257,10 @@ fn handle_button_press(key_id: u8, config_path: &PathBuf, icons_path: &PathBuf) 
     }
 
     // Execute normal command
-    eprintln!("DEBUG: Executing command: {}", cmd);
+    debug_log!("Executing command: {}", cmd);
     let cmd_clone = cmd.clone();
     thread::spawn(move || {
-        Command::new("sh")
-            .arg("-c")
-            .arg(&cmd_clone)
-            .spawn()
-            .ok();
+        Command::new("sh").arg("-c").arg(&cmd_clone).spawn().ok();
     });
 }
 
@@ -2129,7 +2290,7 @@ fn change_page(page_index: usize, config_path: &PathBuf, icons_path: &PathBuf) {
     if let Some(handle) = find_device() {
         let page = &config.pages[page_index];
         if let Err(e) = load_page_to_device(&handle, page, config.brightness, icons_path) {
-            eprintln!("DEBUG: Failed to load page: {}", e);
+            debug_log!("Failed to load page: {}", e);
         }
     }
 }
@@ -2137,7 +2298,7 @@ fn change_page(page_index: usize, config_path: &PathBuf, icons_path: &PathBuf) {
 // Start the button listener in a background thread
 fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
     thread::spawn(move || {
-        eprintln!("DEBUG: Button listener started");
+        debug_log!("Button listener started");
 
         loop {
             // Try to find and open device
@@ -2150,7 +2311,7 @@ fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
                 }
             };
 
-            eprintln!("DEBUG: Button listener connected to device");
+            debug_log!("Button listener connected to device");
 
             // Load initial page on connect
             load_current_page_internal(&handle, &config_path, &icons_path);
@@ -2163,7 +2324,7 @@ fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
             loop {
                 // Check if refresh is requested
                 if REFRESH_NEEDED.swap(false, Ordering::SeqCst) {
-                    eprintln!("DEBUG: Refresh requested, reloading page");
+                    debug_log!("Refresh requested, reloading page");
                     load_current_page_internal(&handle, &config_path, &icons_path);
                     widget_counter = 0; // Reset counter after full refresh
                 }
@@ -2184,7 +2345,7 @@ fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
                     }
                     Err(e) => {
                         if e != "timeout" {
-                            eprintln!("DEBUG: Button listener error: {}", e);
+                            debug_log!("Button listener error: {}", e);
                             break; // Reconnect
                         }
                     }
@@ -2198,7 +2359,11 @@ fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
 }
 
 // Update only buttons that have widget commands
-fn update_widget_buttons(handle: &DeviceHandle<Context>, config_path: &PathBuf, icons_path: &PathBuf) {
+fn update_widget_buttons(
+    handle: &DeviceHandle<Context>,
+    config_path: &PathBuf,
+    icons_path: &PathBuf,
+) {
     let config: Config = match fs::read_to_string(config_path) {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(c) => c,
@@ -2220,11 +2385,15 @@ fn update_widget_buttons(handle: &DeviceHandle<Context>, config_path: &PathBuf, 
                 match generate_button_image(button, icons_path) {
                     Ok(jpeg_data) => {
                         if let Err(e) = set_key_image(handle, key_id, &jpeg_data) {
-                            eprintln!("DEBUG: Failed to update widget button {}: {}", key_id, e);
+                            debug_log!("Failed to update widget button {}: {}", key_id, e);
                         }
                     }
                     Err(e) => {
-                        eprintln!("DEBUG: Failed to generate widget image for button {}: {}", key_id, e);
+                        debug_log!(
+                            "Failed to generate widget image for button {}: {}",
+                            key_id,
+                            e
+                        );
                     }
                 }
             }
@@ -2233,7 +2402,11 @@ fn update_widget_buttons(handle: &DeviceHandle<Context>, config_path: &PathBuf, 
 }
 
 // Internal function to load current page (used by button listener)
-fn load_current_page_internal(handle: &DeviceHandle<Context>, config_path: &PathBuf, icons_path: &PathBuf) {
+fn load_current_page_internal(
+    handle: &DeviceHandle<Context>,
+    config_path: &PathBuf,
+    icons_path: &PathBuf,
+) {
     let config: Config = match fs::read_to_string(config_path) {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(c) => c,
@@ -2245,7 +2418,7 @@ fn load_current_page_internal(handle: &DeviceHandle<Context>, config_path: &Path
     if config.current_page < config.pages.len() {
         let page = &config.pages[config.current_page];
         if let Err(e) = load_page_to_device(handle, page, config.brightness, icons_path) {
-            eprintln!("DEBUG: Failed to load page: {}", e);
+            debug_log!("Failed to load page: {}", e);
         }
     }
 }
@@ -2394,7 +2567,9 @@ fn update_button(
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
 
     if page_index < config.pages.len() {
-        config.pages[page_index].buttons.insert(button_id, button_config);
+        config.pages[page_index]
+            .buttons
+            .insert(button_id, button_config);
     }
     drop(config);
     state.save_config();
@@ -2411,7 +2586,7 @@ fn set_brightness_level(state: State<AppState>, brightness: u8) -> Result<(), St
 
     // Signal the button listener to refresh (which will apply new brightness)
     request_refresh();
-    eprintln!("DEBUG: Brightness set to {}, refresh requested", brightness);
+    debug_log!("Brightness set to {}, refresh requested", brightness);
 
     Ok(())
 }
@@ -2456,10 +2631,7 @@ fn run_command(command: String) -> Result<(), String> {
     if cmd.starts_with("__URL_") {
         let url = cmd[6..].to_string();
         std::thread::spawn(move || {
-            Command::new("xdg-open")
-                .arg(&url)
-                .spawn()
-                .ok();
+            Command::new("xdg-open").arg(&url).spawn().ok();
         });
         return Ok(());
     }
@@ -2468,10 +2640,7 @@ fn run_command(command: String) -> Result<(), String> {
     if cmd.starts_with("__TYPE_") {
         let text = cmd[7..].to_string();
         std::thread::spawn(move || {
-            Command::new("ydotool")
-                .args(["type", "--clearmodifiers", &text])
-                .spawn()
-                .ok();
+            ydotool_command().args(["type", &text]).spawn().ok();
         });
         return Ok(());
     }
@@ -2497,10 +2666,7 @@ fn run_command(command: String) -> Result<(), String> {
                         Command::new("xdg-open").arg(url).spawn().ok();
                     } else if trimmed.starts_with("__TYPE_") {
                         let text = &trimmed[7..];
-                        Command::new("ydotool")
-                            .args(["type", "--clearmodifiers", text])
-                            .status()
-                            .ok();
+                        ydotool_command().args(["type", text]).status().ok();
                     } else if trimmed.starts_with("__KEY_") {
                         let keys = &trimmed[6..];
                         execute_hotkey_sync(keys);
@@ -2509,11 +2675,7 @@ fn run_command(command: String) -> Result<(), String> {
                             std::thread::sleep(Duration::from_millis(ms));
                         }
                     } else {
-                        Command::new("sh")
-                            .arg("-c")
-                            .arg(trimmed)
-                            .status()
-                            .ok();
+                        Command::new("sh").arg("-c").arg(trimmed).status().ok();
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
@@ -2524,11 +2686,7 @@ fn run_command(command: String) -> Result<(), String> {
 
     // Execute normal shell command
     std::thread::spawn(move || {
-        Command::new("sh")
-            .arg("-c")
-            .arg(&command)
-            .spawn()
-            .ok();
+        Command::new("sh").arg("-c").arg(&command).spawn().ok();
     });
 
     Ok(())
@@ -2560,17 +2718,21 @@ fn setup_udev_rules() -> Result<bool, String> {
     let rules_content = r#"SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess""#;
 
     // Check if rules already exist
-    if std::path::Path::new(rules_path).exists() || std::path::Path::new(legacy_rules_path).exists() {
+    if std::path::Path::new(rules_path).exists() || std::path::Path::new(legacy_rules_path).exists()
+    {
         return Ok(true);
     }
 
     // Try to create rules using pkexec
     let result = Command::new("pkexec")
-        .args(["bash", "-c", &format!(
-            "echo '{}' > {} && udevadm control --reload-rules && udevadm trigger",
-            rules_content,
-            rules_path
-        )])
+        .args([
+            "bash",
+            "-c",
+            &format!(
+                "echo '{}' > {} && udevadm control --reload-rules && udevadm trigger",
+                rules_content, rules_path
+            ),
+        ])
         .status();
 
     match result {
@@ -2586,7 +2748,11 @@ fn check_udev_rules() -> bool {
 }
 
 #[tauri::command]
-fn save_icon(state: State<AppState>, source_path: String, icon_name: String) -> Result<String, String> {
+fn save_icon(
+    state: State<AppState>,
+    source_path: String,
+    icon_name: String,
+) -> Result<String, String> {
     let source = PathBuf::from(&source_path);
     if !source.exists() {
         return Err("Source file does not exist".to_string());
@@ -2654,15 +2820,14 @@ fn list_icons(state: State<AppState>) -> Vec<String> {
 
 #[tauri::command]
 fn get_icon_data(state: State<AppState>, filename: String) -> Result<String, String> {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     let icon_path = state.icons_path.join(&filename);
     if !icon_path.exists() {
         return Err(format!("Icon not found: {}", filename));
     }
 
-    let data = fs::read(&icon_path)
-        .map_err(|e| format!("Failed to read icon: {}", e))?;
+    let data = fs::read(&icon_path).map_err(|e| format!("Failed to read icon: {}", e))?;
 
     let mime = if filename.ends_with(".png") {
         "image/png"
@@ -2684,115 +2849,425 @@ fn get_icon_data(state: State<AppState>, filename: String) -> Result<String, Str
 fn get_preset_commands() -> Vec<(String, String, String)> {
     vec![
         // Multimedia
-        ("Vol +".to_string(), "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+".to_string(), "Subir volumen".to_string()),
-        ("Vol -".to_string(), "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-".to_string(), "Bajar volumen".to_string()),
-        ("Mute".to_string(), "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle".to_string(), "Silenciar/Activar audio".to_string()),
-        ("Play/Pause".to_string(), "playerctl play-pause".to_string(), "Reproducir/Pausar media".to_string()),
-        ("Next".to_string(), "playerctl next".to_string(), "Siguiente pista".to_string()),
-        ("Prev".to_string(), "playerctl previous".to_string(), "Pista anterior".to_string()),
-
+        (
+            "Vol +".to_string(),
+            "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+".to_string(),
+            "Subir volumen".to_string(),
+        ),
+        (
+            "Vol -".to_string(),
+            "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-".to_string(),
+            "Bajar volumen".to_string(),
+        ),
+        (
+            "Mute".to_string(),
+            "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle".to_string(),
+            "Silenciar/Activar audio".to_string(),
+        ),
+        (
+            "Play/Pause".to_string(),
+            "playerctl play-pause".to_string(),
+            "Reproducir/Pausar media".to_string(),
+        ),
+        (
+            "Next".to_string(),
+            "playerctl next".to_string(),
+            "Siguiente pista".to_string(),
+        ),
+        (
+            "Prev".to_string(),
+            "playerctl previous".to_string(),
+            "Pista anterior".to_string(),
+        ),
         // Apps comunes
-        ("Firefox".to_string(), "firefox".to_string(), "Navegador Firefox".to_string()),
-        ("Chrome".to_string(), "google-chrome-stable || chromium".to_string(), "Navegador Chrome/Chromium".to_string()),
-        ("Terminal".to_string(), "kitty || alacritty || gnome-terminal".to_string(), "Terminal".to_string()),
-        ("Files".to_string(), "thunar || nautilus || dolphin".to_string(), "Administrador de archivos".to_string()),
-        ("VS Code".to_string(), "code || codium".to_string(), "Visual Studio Code".to_string()),
-        ("Discord".to_string(), "discord".to_string(), "Discord".to_string()),
-        ("Spotify".to_string(), "spotify".to_string(), "Spotify".to_string()),
-        ("Steam".to_string(), "steam".to_string(), "Steam".to_string()),
-        ("OBS".to_string(), "obs".to_string(), "OBS Studio".to_string()),
-
+        (
+            "Firefox".to_string(),
+            "firefox".to_string(),
+            "Navegador Firefox".to_string(),
+        ),
+        (
+            "Chrome".to_string(),
+            "google-chrome-stable || chromium".to_string(),
+            "Navegador Chrome/Chromium".to_string(),
+        ),
+        (
+            "Terminal".to_string(),
+            "kitty || alacritty || gnome-terminal".to_string(),
+            "Terminal".to_string(),
+        ),
+        (
+            "Files".to_string(),
+            "thunar || nautilus || dolphin".to_string(),
+            "Administrador de archivos".to_string(),
+        ),
+        (
+            "VS Code".to_string(),
+            "code || codium".to_string(),
+            "Visual Studio Code".to_string(),
+        ),
+        (
+            "Discord".to_string(),
+            "discord".to_string(),
+            "Discord".to_string(),
+        ),
+        (
+            "Spotify".to_string(),
+            "spotify".to_string(),
+            "Spotify".to_string(),
+        ),
+        (
+            "Steam".to_string(),
+            "steam".to_string(),
+            "Steam".to_string(),
+        ),
+        (
+            "OBS".to_string(),
+            "obs".to_string(),
+            "OBS Studio".to_string(),
+        ),
         // URLs - Abrir páginas web
-        ("YouTube".to_string(), "__URL_https://youtube.com".to_string(), "Abrir YouTube".to_string()),
-        ("Twitch".to_string(), "__URL_https://twitch.tv".to_string(), "Abrir Twitch".to_string()),
-        ("GitHub".to_string(), "__URL_https://github.com".to_string(), "Abrir GitHub".to_string()),
-        ("Twitter/X".to_string(), "__URL_https://x.com".to_string(), "Abrir Twitter/X".to_string()),
-        ("ChatGPT".to_string(), "__URL_https://chat.openai.com".to_string(), "Abrir ChatGPT".to_string()),
-        ("Claude".to_string(), "__URL_https://claude.ai".to_string(), "Abrir Claude AI".to_string()),
-
+        (
+            "YouTube".to_string(),
+            "__URL_https://youtube.com".to_string(),
+            "Abrir YouTube".to_string(),
+        ),
+        (
+            "Twitch".to_string(),
+            "__URL_https://twitch.tv".to_string(),
+            "Abrir Twitch".to_string(),
+        ),
+        (
+            "GitHub".to_string(),
+            "__URL_https://github.com".to_string(),
+            "Abrir GitHub".to_string(),
+        ),
+        (
+            "Twitter/X".to_string(),
+            "__URL_https://x.com".to_string(),
+            "Abrir Twitter/X".to_string(),
+        ),
+        (
+            "ChatGPT".to_string(),
+            "__URL_https://chat.openai.com".to_string(),
+            "Abrir ChatGPT".to_string(),
+        ),
+        (
+            "Claude".to_string(),
+            "__URL_https://claude.ai".to_string(),
+            "Abrir Claude AI".to_string(),
+        ),
         // Hotkeys - Atajos de teclado
-        ("Copiar".to_string(), "__KEY_ctrl+c".to_string(), "Ctrl+C - Copiar".to_string()),
-        ("Pegar".to_string(), "__KEY_ctrl+v".to_string(), "Ctrl+V - Pegar".to_string()),
-        ("Cortar".to_string(), "__KEY_ctrl+x".to_string(), "Ctrl+X - Cortar".to_string()),
-        ("Deshacer".to_string(), "__KEY_ctrl+z".to_string(), "Ctrl+Z - Deshacer".to_string()),
-        ("Rehacer".to_string(), "__KEY_ctrl+shift+z".to_string(), "Ctrl+Shift+Z - Rehacer".to_string()),
-        ("Guardar".to_string(), "__KEY_ctrl+s".to_string(), "Ctrl+S - Guardar".to_string()),
-        ("Buscar".to_string(), "__KEY_ctrl+f".to_string(), "Ctrl+F - Buscar".to_string()),
-        ("Seleccionar todo".to_string(), "__KEY_ctrl+a".to_string(), "Ctrl+A - Seleccionar todo".to_string()),
-        ("Cerrar ventana".to_string(), "__KEY_alt+f4".to_string(), "Alt+F4 - Cerrar ventana".to_string()),
-        ("Cambiar ventana".to_string(), "__KEY_alt+tab".to_string(), "Alt+Tab - Cambiar ventana".to_string()),
-        ("Pantalla completa".to_string(), "__KEY_f11".to_string(), "F11 - Pantalla completa".to_string()),
-        ("Emoji picker".to_string(), "__KEY_super+period".to_string(), "Super+. - Selector de emojis".to_string()),
-
+        (
+            "Copiar".to_string(),
+            "__KEY_ctrl+c".to_string(),
+            "Ctrl+C - Copiar".to_string(),
+        ),
+        (
+            "Pegar".to_string(),
+            "__KEY_ctrl+v".to_string(),
+            "Ctrl+V - Pegar".to_string(),
+        ),
+        (
+            "Cortar".to_string(),
+            "__KEY_ctrl+x".to_string(),
+            "Ctrl+X - Cortar".to_string(),
+        ),
+        (
+            "Deshacer".to_string(),
+            "__KEY_ctrl+z".to_string(),
+            "Ctrl+Z - Deshacer".to_string(),
+        ),
+        (
+            "Rehacer".to_string(),
+            "__KEY_ctrl+shift+z".to_string(),
+            "Ctrl+Shift+Z - Rehacer".to_string(),
+        ),
+        (
+            "Guardar".to_string(),
+            "__KEY_ctrl+s".to_string(),
+            "Ctrl+S - Guardar".to_string(),
+        ),
+        (
+            "Buscar".to_string(),
+            "__KEY_ctrl+f".to_string(),
+            "Ctrl+F - Buscar".to_string(),
+        ),
+        (
+            "Seleccionar todo".to_string(),
+            "__KEY_ctrl+a".to_string(),
+            "Ctrl+A - Seleccionar todo".to_string(),
+        ),
+        (
+            "Cerrar ventana".to_string(),
+            "__KEY_alt+f4".to_string(),
+            "Alt+F4 - Cerrar ventana".to_string(),
+        ),
+        (
+            "Cambiar ventana".to_string(),
+            "__KEY_alt+tab".to_string(),
+            "Alt+Tab - Cambiar ventana".to_string(),
+        ),
+        (
+            "Pantalla completa".to_string(),
+            "__KEY_f11".to_string(),
+            "F11 - Pantalla completa".to_string(),
+        ),
+        (
+            "Emoji picker".to_string(),
+            "__KEY_super+period".to_string(),
+            "Super+. - Selector de emojis".to_string(),
+        ),
         // Texto predefinido
-        ("Email".to_string(), "__TYPE_tucorreo@ejemplo.com".to_string(), "Escribir email (editar)".to_string()),
-        ("Saludo".to_string(), "__TYPE_¡Hola! ¿Cómo estás?".to_string(), "Escribir saludo".to_string()),
-        ("Firma".to_string(), "__TYPE_Saludos cordiales".to_string(), "Escribir firma".to_string()),
-
+        (
+            "Email".to_string(),
+            "__TYPE_tucorreo@ejemplo.com".to_string(),
+            "Escribir email (editar)".to_string(),
+        ),
+        (
+            "Saludo".to_string(),
+            "__TYPE_¡Hola! ¿Cómo estás?".to_string(),
+            "Escribir saludo".to_string(),
+        ),
+        (
+            "Firma".to_string(),
+            "__TYPE_Saludos cordiales".to_string(),
+            "Escribir firma".to_string(),
+        ),
         // Multi-acciones
-        ("Abrir+Escribir".to_string(), "__MULTI_firefox;;__DELAY_2000;;__TYPE_https://google.com".to_string(), "Abrir Firefox y escribir URL".to_string()),
-        ("Copy+Paste".to_string(), "__MULTI___KEY_ctrl+c;;__DELAY_500;;__KEY_ctrl+v".to_string(), "Copiar y pegar".to_string()),
-
+        (
+            "Abrir+Escribir".to_string(),
+            "__MULTI_firefox;;__DELAY_2000;;__TYPE_https://google.com".to_string(),
+            "Abrir Firefox y escribir URL".to_string(),
+        ),
+        (
+            "Copy+Paste".to_string(),
+            "__MULTI___KEY_ctrl+c;;__DELAY_500;;__KEY_ctrl+v".to_string(),
+            "Copiar y pegar".to_string(),
+        ),
         // Widgets - Fecha/Hora
-        ("Reloj".to_string(), "__CLOCK__".to_string(), "Muestra hora actual (HH:MM)".to_string()),
-        ("Reloj+Seg".to_string(), "__CLOCK_S__".to_string(), "Muestra hora con segundos".to_string()),
-        ("Fecha".to_string(), "__DATE__".to_string(), "Muestra fecha (DD/MM)".to_string()),
-        ("Fecha completa".to_string(), "__DATE_FULL__".to_string(), "Muestra fecha completa".to_string()),
-        ("Día semana".to_string(), "__WEEKDAY__".to_string(), "Muestra día de la semana".to_string()),
-
+        (
+            "Reloj".to_string(),
+            "__CLOCK__".to_string(),
+            "Muestra hora actual (HH:MM)".to_string(),
+        ),
+        (
+            "Reloj+Seg".to_string(),
+            "__CLOCK_S__".to_string(),
+            "Muestra hora con segundos".to_string(),
+        ),
+        (
+            "Fecha".to_string(),
+            "__DATE__".to_string(),
+            "Muestra fecha (DD/MM)".to_string(),
+        ),
+        (
+            "Fecha completa".to_string(),
+            "__DATE_FULL__".to_string(),
+            "Muestra fecha completa".to_string(),
+        ),
+        (
+            "Día semana".to_string(),
+            "__WEEKDAY__".to_string(),
+            "Muestra día de la semana".to_string(),
+        ),
         // Widgets - Sistema
-        ("CPU %".to_string(), "__CPU__".to_string(), "Muestra uso de CPU".to_string()),
-        ("RAM %".to_string(), "__RAM__".to_string(), "Muestra uso de RAM".to_string()),
-        ("Temp CPU".to_string(), "__TEMP__".to_string(), "Muestra temperatura CPU".to_string()),
-
+        (
+            "CPU %".to_string(),
+            "__CPU__".to_string(),
+            "Muestra uso de CPU".to_string(),
+        ),
+        (
+            "RAM %".to_string(),
+            "__RAM__".to_string(),
+            "Muestra uso de RAM".to_string(),
+        ),
+        (
+            "Temp CPU".to_string(),
+            "__TEMP__".to_string(),
+            "Muestra temperatura CPU".to_string(),
+        ),
         // Widgets - Timer
-        ("Timer 1m".to_string(), "__TIMER_1__".to_string(), "Temporizador 1 minuto".to_string()),
-        ("Timer 5m".to_string(), "__TIMER_5__".to_string(), "Temporizador 5 minutos".to_string()),
-        ("Timer 10m".to_string(), "__TIMER_10__".to_string(), "Temporizador 10 minutos".to_string()),
-        ("Timer 15m".to_string(), "__TIMER_15__".to_string(), "Temporizador 15 minutos".to_string()),
-        ("Timer 30m".to_string(), "__TIMER_30__".to_string(), "Temporizador 30 minutos".to_string()),
-
+        (
+            "Timer 1m".to_string(),
+            "__TIMER_1__".to_string(),
+            "Temporizador 1 minuto".to_string(),
+        ),
+        (
+            "Timer 5m".to_string(),
+            "__TIMER_5__".to_string(),
+            "Temporizador 5 minutos".to_string(),
+        ),
+        (
+            "Timer 10m".to_string(),
+            "__TIMER_10__".to_string(),
+            "Temporizador 10 minutos".to_string(),
+        ),
+        (
+            "Timer 15m".to_string(),
+            "__TIMER_15__".to_string(),
+            "Temporizador 15 minutos".to_string(),
+        ),
+        (
+            "Timer 30m".to_string(),
+            "__TIMER_30__".to_string(),
+            "Temporizador 30 minutos".to_string(),
+        ),
         // OBS Studio - WebSocket Control
-        ("OBS Stream".to_string(), "__OBS_STREAM__".to_string(), "Iniciar/Detener streaming".to_string()),
-        ("OBS Record".to_string(), "__OBS_RECORD__".to_string(), "Iniciar/Detener grabación".to_string()),
-        ("OBS Mute".to_string(), "__OBS_MUTE__".to_string(), "Mutear/Desmutear micrófono".to_string()),
-        ("OBS Status".to_string(), "__OBS_STATUS__".to_string(), "Widget: muestra LIVE/REC".to_string()),
-        ("Escena 1".to_string(), "__OBS_SCENE_Scene".to_string(), "Cambiar a escena (editar nombre)".to_string()),
-        ("Escena Gaming".to_string(), "__OBS_SCENE_Gaming".to_string(), "Cambiar a escena Gaming".to_string()),
-        ("Escena Webcam".to_string(), "__OBS_SCENE_Webcam".to_string(), "Cambiar a escena Webcam".to_string()),
-        ("Escena BRB".to_string(), "__OBS_SCENE_BRB".to_string(), "Cambiar a escena BRB".to_string()),
-
+        (
+            "OBS Stream".to_string(),
+            "__OBS_STREAM__".to_string(),
+            "Iniciar/Detener streaming".to_string(),
+        ),
+        (
+            "OBS Record".to_string(),
+            "__OBS_RECORD__".to_string(),
+            "Iniciar/Detener grabación".to_string(),
+        ),
+        (
+            "OBS Mute".to_string(),
+            "__OBS_MUTE__".to_string(),
+            "Mutear/Desmutear micrófono".to_string(),
+        ),
+        (
+            "OBS Status".to_string(),
+            "__OBS_STATUS__".to_string(),
+            "Widget: muestra LIVE/REC".to_string(),
+        ),
+        (
+            "Escena 1".to_string(),
+            "__OBS_SCENE_Scene".to_string(),
+            "Cambiar a escena (editar nombre)".to_string(),
+        ),
+        (
+            "Escena Gaming".to_string(),
+            "__OBS_SCENE_Gaming".to_string(),
+            "Cambiar a escena Gaming".to_string(),
+        ),
+        (
+            "Escena Webcam".to_string(),
+            "__OBS_SCENE_Webcam".to_string(),
+            "Cambiar a escena Webcam".to_string(),
+        ),
+        (
+            "Escena BRB".to_string(),
+            "__OBS_SCENE_BRB".to_string(),
+            "Cambiar a escena BRB".to_string(),
+        ),
         // Twitch Integration
-        ("Twitch Viewers".to_string(), "__TWITCH_VIEWERS__".to_string(), "Widget: muestra viewers actuales".to_string()),
-        ("Twitch Followers".to_string(), "__TWITCH_FOLLOWERS__".to_string(), "Widget: muestra total followers".to_string()),
-        ("Twitch Clip".to_string(), "__TWITCH_CLIP__".to_string(), "Crear clip del stream".to_string()),
-        ("Ad 30s".to_string(), "__TWITCH_AD_30__".to_string(), "Comercial de 30 segundos".to_string()),
-        ("Ad 60s".to_string(), "__TWITCH_AD_60__".to_string(), "Comercial de 60 segundos".to_string()),
-        ("Ad 90s".to_string(), "__TWITCH_AD_90__".to_string(), "Comercial de 90 segundos".to_string()),
-        ("Chat Hola".to_string(), "__TWITCH_CHAT_¡Hola chat!".to_string(), "Enviar mensaje al chat".to_string()),
-        ("Chat BRB".to_string(), "__TWITCH_CHAT_BRB - Vuelvo en un momento".to_string(), "Enviar BRB al chat".to_string()),
-
+        (
+            "Twitch Viewers".to_string(),
+            "__TWITCH_VIEWERS__".to_string(),
+            "Widget: muestra viewers actuales".to_string(),
+        ),
+        (
+            "Twitch Followers".to_string(),
+            "__TWITCH_FOLLOWERS__".to_string(),
+            "Widget: muestra total followers".to_string(),
+        ),
+        (
+            "Twitch Clip".to_string(),
+            "__TWITCH_CLIP__".to_string(),
+            "Crear clip del stream".to_string(),
+        ),
+        (
+            "Ad 30s".to_string(),
+            "__TWITCH_AD_30__".to_string(),
+            "Comercial de 30 segundos".to_string(),
+        ),
+        (
+            "Ad 60s".to_string(),
+            "__TWITCH_AD_60__".to_string(),
+            "Comercial de 60 segundos".to_string(),
+        ),
+        (
+            "Ad 90s".to_string(),
+            "__TWITCH_AD_90__".to_string(),
+            "Comercial de 90 segundos".to_string(),
+        ),
+        (
+            "Chat Hola".to_string(),
+            "__TWITCH_CHAT_¡Hola chat!".to_string(),
+            "Enviar mensaje al chat".to_string(),
+        ),
+        (
+            "Chat BRB".to_string(),
+            "__TWITCH_CHAT_BRB - Vuelvo en un momento".to_string(),
+            "Enviar BRB al chat".to_string(),
+        ),
         // Hyprland/Sway workspaces
-        ("WS 1".to_string(), "hyprctl dispatch workspace 1".to_string(), "Ir a workspace 1".to_string()),
-        ("WS 2".to_string(), "hyprctl dispatch workspace 2".to_string(), "Ir a workspace 2".to_string()),
-        ("WS 3".to_string(), "hyprctl dispatch workspace 3".to_string(), "Ir a workspace 3".to_string()),
-        ("WS 4".to_string(), "hyprctl dispatch workspace 4".to_string(), "Ir a workspace 4".to_string()),
-        ("WS 5".to_string(), "hyprctl dispatch workspace 5".to_string(), "Ir a workspace 5".to_string()),
-
+        (
+            "WS 1".to_string(),
+            "hyprctl dispatch workspace 1".to_string(),
+            "Ir a workspace 1".to_string(),
+        ),
+        (
+            "WS 2".to_string(),
+            "hyprctl dispatch workspace 2".to_string(),
+            "Ir a workspace 2".to_string(),
+        ),
+        (
+            "WS 3".to_string(),
+            "hyprctl dispatch workspace 3".to_string(),
+            "Ir a workspace 3".to_string(),
+        ),
+        (
+            "WS 4".to_string(),
+            "hyprctl dispatch workspace 4".to_string(),
+            "Ir a workspace 4".to_string(),
+        ),
+        (
+            "WS 5".to_string(),
+            "hyprctl dispatch workspace 5".to_string(),
+            "Ir a workspace 5".to_string(),
+        ),
         // Sistema
-        ("Screenshot".to_string(), "grim -g \"$(slurp)\" - | wl-copy".to_string(), "Captura de pantalla".to_string()),
-        ("Lock".to_string(), "swaylock || i3lock".to_string(), "Bloquear pantalla".to_string()),
-        ("Suspend".to_string(), "systemctl suspend".to_string(), "Suspender sistema".to_string()),
-
+        (
+            "Screenshot".to_string(),
+            "grim -g \"$(slurp)\" - | wl-copy".to_string(),
+            "Captura de pantalla".to_string(),
+        ),
+        (
+            "Lock".to_string(),
+            "swaylock || i3lock".to_string(),
+            "Bloquear pantalla".to_string(),
+        ),
+        (
+            "Suspend".to_string(),
+            "systemctl suspend".to_string(),
+            "Suspender sistema".to_string(),
+        ),
         // Navegación de páginas
-        (">> Next".to_string(), "__NEXT_PAGE__".to_string(), "Siguiente página".to_string()),
-        ("<< Prev".to_string(), "__PREV_PAGE__".to_string(), "Página anterior".to_string()),
-        ("Home".to_string(), "__PAGE_0__".to_string(), "Ir a página principal".to_string()),
-
+        (
+            ">> Next".to_string(),
+            "__NEXT_PAGE__".to_string(),
+            "Siguiente página".to_string(),
+        ),
+        (
+            "<< Prev".to_string(),
+            "__PREV_PAGE__".to_string(),
+            "Página anterior".to_string(),
+        ),
+        (
+            "Home".to_string(),
+            "__PAGE_0__".to_string(),
+            "Ir a página principal".to_string(),
+        ),
         // Global Hotkeys
-        ("Hotkey F1".to_string(), "__HOTKEY_F1__".to_string(), "Activar con tecla F1".to_string()),
-        ("Hotkey Ctrl+F1".to_string(), "__HOTKEY_Ctrl+F1__".to_string(), "Activar con Ctrl+F1".to_string()),
-        ("Hotkey Ctrl+Shift+1".to_string(), "__HOTKEY_Ctrl+Shift+1__".to_string(), "Activar con Ctrl+Shift+1".to_string()),
+        (
+            "Hotkey F1".to_string(),
+            "__HOTKEY_F1__".to_string(),
+            "Activar con tecla F1".to_string(),
+        ),
+        (
+            "Hotkey Ctrl+F1".to_string(),
+            "__HOTKEY_Ctrl+F1__".to_string(),
+            "Activar con Ctrl+F1".to_string(),
+        ),
+        (
+            "Hotkey Ctrl+Shift+1".to_string(),
+            "__HOTKEY_Ctrl+Shift+1__".to_string(),
+            "Activar con Ctrl+Shift+1".to_string(),
+        ),
     ]
 }
 
@@ -2802,7 +3277,7 @@ fn get_preset_commands() -> Vec<(String, String, String)> {
 
 #[tauri::command]
 fn start_hotkey_recording() -> Result<(), String> {
-    eprintln!("DEBUG: Starting hotkey recording");
+    debug_log!("Starting hotkey recording");
     // Clear previous recorded keys
     if let Ok(mut recorded) = RECORDED_HOTKEY.write() {
         recorded.clear();
@@ -2814,7 +3289,7 @@ fn start_hotkey_recording() -> Result<(), String> {
 
 #[tauri::command]
 fn stop_hotkey_recording() -> Result<String, String> {
-    eprintln!("DEBUG: Stopping hotkey recording");
+    debug_log!("Stopping hotkey recording");
     HOTKEY_RECORDING.store(false, Ordering::Relaxed);
 
     // Get the recorded keys
@@ -2834,7 +3309,7 @@ fn stop_hotkey_recording() -> Result<String, String> {
         current.clear();
     }
 
-    eprintln!("DEBUG: Recorded hotkey: {}", hotkey_str);
+    debug_log!("Recorded hotkey: {}", hotkey_str);
     Ok(hotkey_str)
 }
 
@@ -2849,7 +3324,12 @@ fn get_current_recording() -> Result<String, String> {
 
 #[tauri::command]
 fn register_hotkey(hotkey: String, page: usize, button_id: u8) -> Result<(), String> {
-    eprintln!("DEBUG: Registering hotkey '{}' for page {} button {}", hotkey, page, button_id);
+    debug_log!(
+        "Registering hotkey '{}' for page {} button {}",
+        hotkey,
+        page,
+        button_id
+    );
     if let Ok(mut hotkeys) = REGISTERED_HOTKEYS.write() {
         hotkeys.insert(hotkey, (page, button_id));
         Ok(())
@@ -2860,7 +3340,7 @@ fn register_hotkey(hotkey: String, page: usize, button_id: u8) -> Result<(), Str
 
 #[tauri::command]
 fn unregister_hotkey(hotkey: String) -> Result<(), String> {
-    eprintln!("DEBUG: Unregistering hotkey '{}'", hotkey);
+    debug_log!("Unregistering hotkey '{}'", hotkey);
     if let Ok(mut hotkeys) = REGISTERED_HOTKEYS.write() {
         hotkeys.remove(&hotkey);
         Ok(())
@@ -2872,7 +3352,10 @@ fn unregister_hotkey(hotkey: String) -> Result<(), String> {
 #[tauri::command]
 fn get_registered_hotkeys() -> Result<Vec<(String, usize, u8)>, String> {
     if let Ok(hotkeys) = REGISTERED_HOTKEYS.read() {
-        Ok(hotkeys.iter().map(|(k, (p, b))| (k.clone(), *p, *b)).collect())
+        Ok(hotkeys
+            .iter()
+            .map(|(k, (p, b))| (k.clone(), *p, *b))
+            .collect())
     } else {
         Err("Failed to get hotkeys".to_string())
     }
@@ -2917,7 +3400,7 @@ pub struct CommitInfo {
 
 #[tauri::command]
 async fn check_for_updates() -> Result<UpdateInfo, String> {
-    eprintln!("DEBUG: Checking for updates...");
+    debug_log!("Checking for updates...");
 
     // Get latest commits from GitHub API
     let url = format!(
@@ -2957,10 +3440,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         });
     }
 
-    let latest_commit = commits[0]["sha"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let latest_commit = commits[0]["sha"].as_str().unwrap_or("").to_string();
 
     let available = CURRENT_COMMIT
         .map(|current_commit| latest_commit != current_commit)
@@ -3013,12 +3493,18 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         String::new()
     };
 
-    eprintln!("DEBUG: Update available: {}, changes: {}", available, changes.len());
+    debug_log!(
+        "Update available: {}, changes: {}",
+        available,
+        changes.len()
+    );
 
     Ok(UpdateInfo {
         available,
         current_version: CURRENT_VERSION.to_string(),
-        current_commit: CURRENT_COMMIT.map(short_commit).unwrap_or_else(|| "unknown".to_string()),
+        current_commit: CURRENT_COMMIT
+            .map(short_commit)
+            .unwrap_or_else(|| "unknown".to_string()),
         latest_commit: latest_commit.clone(),
         latest_commit_short: short_commit(&latest_commit),
         changes,
@@ -3028,17 +3514,17 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
 
 #[tauri::command]
 async fn install_update() -> Result<String, String> {
-    eprintln!("DEBUG: Starting update installation...");
+    debug_log!("Starting update installation...");
 
     // Get the directory where the app is located
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))?;
+    let exe_path =
+        std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
 
-    let app_dir = exe_path.parent()
-        .ok_or("Failed to get app directory")?;
+    let app_dir = exe_path.parent().ok_or("Failed to get app directory")?;
 
     // Create update script
-    let update_script = format!(r#"#!/bin/bash
+    let update_script = format!(
+        r#"#!/bin/bash
 set -e
 
 REPO_URL="https://github.com/{}.git"
@@ -3087,7 +3573,10 @@ rm -rf "$TEMP_DIR"
 echo ""
 echo "=== Actualización completada ==="
 echo "Reinicia la aplicación para aplicar los cambios."
-"#, GITHUB_REPO, app_dir.display());
+"#,
+        GITHUB_REPO,
+        app_dir.display()
+    );
 
     // Save script to temp file
     let script_path = std::env::temp_dir().join("redragon-update.sh");
@@ -3103,7 +3592,14 @@ echo "Reinicia la aplicación para aplicar los cambios."
     }
 
     // Run the update script in a terminal
-    let terminals = ["foot", "kitty", "alacritty", "gnome-terminal", "konsole", "xterm"];
+    let terminals = [
+        "foot",
+        "kitty",
+        "alacritty",
+        "gnome-terminal",
+        "konsole",
+        "xterm",
+    ];
     let mut success = false;
 
     for terminal in &terminals {
@@ -3119,7 +3615,7 @@ echo "Reinicia la aplicación para aplicar los cambios."
 
         if result.is_ok() {
             success = true;
-            eprintln!("DEBUG: Update started in {}", terminal);
+            debug_log!("Update started in {}", terminal);
             break;
         }
     }
@@ -3132,14 +3628,19 @@ echo "Reinicia la aplicación para aplicar los cambios."
             .map_err(|e| format!("Failed to start update: {}", e))?;
     }
 
-    Ok("Actualización iniciada. La aplicación se cerrará para completar la instalación.".to_string())
+    Ok(
+        "Actualización iniciada. La aplicación se cerrará para completar la instalación."
+            .to_string(),
+    )
 }
 
 #[tauri::command]
 fn get_current_version() -> (String, String) {
     (
         CURRENT_VERSION.to_string(),
-        CURRENT_COMMIT.map(short_commit).unwrap_or_else(|| "unknown".to_string()),
+        CURRENT_COMMIT
+            .map(short_commit)
+            .unwrap_or_else(|| "unknown".to_string()),
     )
 }
 
@@ -3154,7 +3655,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
             fs::create_dir_all(&app_dir).ok();
 
             let state = AppState::new(app_dir.clone());

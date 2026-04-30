@@ -65,7 +65,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ydotoold
+ExecStart=/usr/bin/ydotoold --socket-path=/tmp/.ydotool_socket --socket-perm=0660 --socket-own=0:992
 Restart=on-failure
 
 [Install]
