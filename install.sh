@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# Redragon Stream Deck Manager - Instalador para Arch Linux
+# Redragon Stream Deck Manager - Instalador para Arch Linux / CachyOS
 # =============================================================================
 
 set -e
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 print_header() {
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║     Redragon Stream Deck Manager - Instalador Arch Linux     ║"
+    echo "║   Redragon Stream Deck Manager - Instalador Arch/CachyOS     ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -40,7 +40,11 @@ print_success() {
 check_arch() {
     # Detectar Arch y derivados (CachyOS, Manjaro, EndeavourOS, etc.)
     if [ -f /etc/arch-release ]; then
-        print_success "Detectado: Arch Linux"
+        if [ -f /etc/os-release ] && grep -qi "cachyos" /etc/os-release; then
+            print_success "Detectado: CachyOS"
+        else
+            print_success "Detectado: Arch Linux"
+        fi
     elif [ -f /etc/os-release ] && grep -qi "arch\|cachyos\|manjaro\|endeavour\|garuda\|artix" /etc/os-release; then
         DISTRO_NAME=$(grep "^NAME=" /etc/os-release | cut -d'"' -f2)
         print_success "Detectado: $DISTRO_NAME (basado en Arch)"
@@ -58,7 +62,7 @@ check_arch() {
 install_dependencies() {
     print_step "Instalando dependencias del sistema..."
 
-    DEPS="webkit2gtk gtk3 libusb openssl glib2 base-devel ydotool playerctl"
+    DEPS="webkit2gtk-4.1 gtk3 libusb openssl glib2 base-devel git curl xdg-utils desktop-file-utils ydotool playerctl wireplumber"
 
     # Verificar cuáles ya están instaladas
     MISSING=""
