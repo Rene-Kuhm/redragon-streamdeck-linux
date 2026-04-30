@@ -1,0 +1,13 @@
+[Unit]
+Description=Redragon Stream Deck Manager
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/redragon-streamdeck
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
