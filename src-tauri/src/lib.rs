@@ -1161,6 +1161,112 @@ fn get_widget_temp() -> String {
     "N/A".to_string()
 }
 
+// Weather widget config storage
+lazy_static::lazy_static! {
+    static ref WEATHER_LOCATION: RwLock<String> = RwLock::new(String::new());
+    static ref WEATHER_CACHE: RwLock<(String, u64)> = RwLock::new((String::new(), 0));
+}
+
+// Get weather widget text (cached, refreshes every 5 minutes)
+fn get_widget_weather() -> String {
+    let location = WEATHER_LOCATION.read().ok().map(|l| l.clone()).unwrap_or_default();
+    if location.is_empty() {
+        return "NoCity".to_string();
+    }
+
+    // Check cache (5 minute TTL)
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let (cached_text, cached_time) = WEATHER_CACHE.read().ok().map(|c| c.clone()).unwrap_or_default();
+    if !cached_text.is_empty() && now.saturating_sub(cached_time) < 300 {
+        return cached_text;
+    }
+
+    // Fetch weather using Open-Meteo free API (no key needed)
+    let city_encoded = urlencoding::encode(&location);
+    let url = format!(
+        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language=en&format=json",
+        city_encoded
+    );
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return "Err".to_string(),
+    };
+
+    let geo_resp = match client.get(&url).send() {
+        Ok(r) => r,
+        Err(_) => return "Err".to_string(),
+    };
+
+    let geo_json: serde_json::Value = match geo_resp.json() {
+        Ok(j) => j,
+        Err(_) => return "Err".to_string(),
+    };
+
+    let lat = match geo_json["results"][0]["latitude"].as_f64() {
+        Some(l) => l,
+        None => return "NoLoc".to_string(),
+    };
+    let lon = match geo_json["results"][0]["longitude"].as_f64() {
+        Some(l) => l,
+        None => return "NoLoc".to_string(),
+    };
+
+    let weather_url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,weather_code&timezone=auto",
+        lat, lon
+    );
+
+    let weather_resp = match client.get(&weather_url).send() {
+        Ok(r) => r,
+        Err(_) => return "Err".to_string(),
+    };
+
+    let weather_json: serde_json::Value = match weather_resp.json() {
+        Ok(j) => j,
+        Err(_) => return "Err".to_string(),
+    };
+
+    let temp = weather_json["current"]["temperature_2m"].as_f64().unwrap_or(0.0);
+    let weather_code = weather_json["current"]["weather_code"].as_i64().unwrap_or(0);
+
+    let icon_str = weather_icon(weather_code);
+    let result = format!("{} {:.0}C", icon_str, temp);
+
+    // Update cache
+    if let Ok(mut cache) = WEATHER_CACHE.write() {
+        *cache = (result.clone(), now);
+    }
+
+    result
+}
+
+// Weather code to icon mapping (WMO standard)
+fn weather_icon(code: i64) -> &'static str {
+    match code {
+        0 => "☀️",
+        1 | 2 | 3 => "⛅",
+        45 | 48 => "🌫️",
+        51 | 53 | 55 => "🌦️",
+        56 | 57 => "🌨️",
+        61 | 63 | 80 => "🌧️",
+        65 | 81 | 82 => "🌧️",
+        66 | 67 => "🌨️",
+        71 | 73 | 75 | 77 => "🌨️",
+        85 | 86 => "❄️",
+        95 => "⛈️",
+        96 | 99 => "⛈️",
+        _ => "🌡️",
+    }
+}
+
 // Get timer remaining time
 fn get_widget_timer() -> String {
     let start = TIMER_START.load(Ordering::Relaxed);
@@ -1218,6 +1324,7 @@ fn is_widget_command(cmd: &str) -> bool {
         || cmd == "__OBS_STATUS__"
         || cmd == "__TWITCH_VIEWERS__"
         || cmd == "__TWITCH_FOLLOWERS__"
+        || cmd == "__WEATHER__"
 }
 
 // Get the display text for a widget command
@@ -1247,6 +1354,8 @@ fn get_widget_text(cmd: &str) -> Option<String> {
         Some(get_twitch_viewers_text())
     } else if cmd == "__TWITCH_FOLLOWERS__" {
         Some(get_twitch_followers_text())
+    } else if cmd == "__WEATHER__" {
+        Some(get_widget_weather())
     } else {
         None
     }
@@ -3086,6 +3195,11 @@ fn get_preset_commands() -> Vec<(String, String, String)> {
             "__TEMP__".to_string(),
             "Muestra temperatura CPU".to_string(),
         ),
+        (
+            "Clima".to_string(),
+            "__WEATHER__".to_string(),
+            "Widget: clima actual (configura ciudad con --set-weather)".to_string(),
+        ),
         // Widgets - Timer
         (
             "Timer 1m".to_string(),
@@ -3347,6 +3461,25 @@ fn unregister_hotkey(hotkey: String) -> Result<(), String> {
     } else {
         Err("Failed to unregister hotkey".to_string())
     }
+}
+
+#[tauri::command]
+fn set_weather_location(city: String) -> Result<(), String> {
+    if let Ok(mut loc) = WEATHER_LOCATION.write() {
+        *loc = city.clone();
+    }
+    // Invalidate cache so next refresh fetches immediately
+    if let Ok(mut cache) = WEATHER_CACHE.write() {
+        cache.0 = String::new();
+        cache.1 = 0;
+    }
+    debug_log!("Weather location set to: {}", city);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_weather_location() -> String {
+    WEATHER_LOCATION.read().ok().map(|l| l.clone()).unwrap_or_default()
 }
 
 #[tauri::command]
