@@ -65,7 +65,8 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ydotoold --socket-path=/tmp/.ydotool_socket --socket-perm=0660 --socket-own=0:992
+ExecStart=/usr/bin/ydotoold --socket-path=/tmp/.ydotool_socket --socket-perm=0660
+ExecStartPost=/bin/sh -c 'for i in 1 2 3 4 5; do [ -S /tmp/.ydotool_socket ] && chgrp input /tmp/.ydotool_socket && chmod 0660 /tmp/.ydotool_socket && exit 0; sleep 0.2; done; exit 1'
 Restart=on-failure
 
 [Install]

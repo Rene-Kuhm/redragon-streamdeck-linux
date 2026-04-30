@@ -35,6 +35,10 @@ sudo pacman -S --needed pipewire-pulse wireplumber
 ydotool necesita el servicio ydotoold corriendo:
 
 ```bash
+# Instalar el servicio incluido en este repositorio
+sudo cp ydotoold.service /etc/systemd/system/ydotoold.service
+sudo systemctl daemon-reload
+
 # Habilitar e iniciar el servicio
 sudo systemctl enable ydotoold.service
 sudo systemctl start ydotoold.service
@@ -44,6 +48,20 @@ sudo usermod -aG input $USER
 
 # Cerrar sesión y volver a iniciar para aplicar cambios de grupo
 ```
+
+El servicio debe crear un socket accesible por el grupo `input`:
+
+```bash
+stat -c '%a %U:%G %n' /tmp/.ydotool_socket
+```
+
+Salida esperada:
+
+```text
+660 root:input /tmp/.ydotool_socket
+```
+
+La aplicación usa `YDOTOOL_SOCKET=/tmp/.ydotool_socket` para ejecutar comandos `__TYPE_...` y `__KEY_...`.
 
 ### 3. Configurar reglas udev para el dispositivo USB
 
@@ -210,7 +228,23 @@ systemctl --user start redragon-streamdeck.service
    groups | grep input
    ```
 
-3. Si usas X11 en lugar de Wayland, puede que necesites xdotool:
+3. Verifica que el socket de ydotoold tenga grupo `input`:
+   ```bash
+   stat -c '%a %U:%G %n' /tmp/.ydotool_socket
+   ```
+
+   Debe mostrar:
+   ```text
+   660 root:input /tmp/.ydotool_socket
+   ```
+
+4. Prueba el acceso al socket:
+   ```bash
+   YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool type ""
+   YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool key 29:1 29:0
+   ```
+
+5. Si usas X11 en lugar de Wayland, puede que necesites xdotool:
    ```bash
    sudo pacman -S xdotool
    ```
