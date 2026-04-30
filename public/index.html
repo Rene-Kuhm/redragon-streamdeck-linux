@@ -46,6 +46,14 @@
           <span class="btn-icon">⟳</span>
           Reconectar
         </button>
+        <button id="profiles-btn" onclick="openProfilesModal()" title="Administrar perfiles por aplicación">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          Perfiles
+        </button>
       </div>
     </header>
 
@@ -407,6 +415,38 @@ TWITCH_CHANNEL=tu_canal
             Eliminar
           </button>
           <button onclick="closeConfirmModal()" class="btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Perfiles por Aplicación -->
+    <div id="profiles-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Perfiles por Aplicación
+          </h2>
+        </div>
+        <p class="profiles-description">Asocia una aplicación activa a una página del Stream Deck. El perfil cambiará automáticamente al cambiar de aplicación.</p>
+        <div id="profiles-list" class="profiles-list"></div>
+        <div class="profile-add-form">
+          <input type="text" id="profile-app-name" placeholder="Nombre de la aplicación (ej: firefox, obs)">
+          <select id="profile-page-select"></select>
+          <button onclick="addAppProfile()" class="btn-primary btn-small">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Agregar
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button onclick="closeProfilesModal()" class="btn-secondary">Cerrar</button>
         </div>
       </div>
     </div>
