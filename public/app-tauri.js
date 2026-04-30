@@ -698,6 +698,7 @@ document.addEventListener('keydown', (e) => {
     closePageModal();
     closeNewPageModal();
     closeConfirmModal();
+    closeProfilesModal();
   }
   if (e.key === 'Enter' && document.getElementById('new-page-modal').classList.contains('active')) {
     createNewPage();
@@ -719,6 +720,110 @@ document.getElementById('new-page-modal').addEventListener('click', (e) => {
 document.getElementById('confirm-modal').addEventListener('click', (e) => {
   if (e.target.id === 'confirm-modal') closeConfirmModal();
 });
+
+document.getElementById('profiles-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'profiles-modal') closeProfilesModal();
+});
+
+// ============================================================================
+// App Profiles Management
+// ============================================================================
+
+let appProfiles = {};
+
+async function openProfilesModal() {
+  try {
+    appProfiles = await invoke('get_app_profiles');
+    renderProfilesList();
+    populatePageSelect();
+    document.getElementById('profiles-modal').classList.add('active');
+  } catch (e) {
+    console.error('Error loading app profiles:', e);
+    showToast('Error al cargar perfiles');
+  }
+}
+
+function closeProfilesModal() {
+  document.getElementById('profiles-modal').classList.remove('active');
+}
+
+function renderProfilesList() {
+  const container = document.getElementById('profiles-list');
+  container.innerHTML = '';
+
+  const entries = Object.entries(appProfiles);
+  if (entries.length === 0) {
+    container.innerHTML = '<p class="no-profiles">No hay perfiles configurados. Agrega uno abajo.</p>';
+    return;
+  }
+
+  entries.forEach(([appName, pageIndex]) => {
+    const pageName = config.pages[pageIndex]?.name || `Página ${pageIndex + 1}`;
+    const item = document.createElement('div');
+    item.className = 'profile-item';
+    item.innerHTML = `
+      <div class="profile-info">
+        <span class="profile-app">${escapeHtml(appName)}</span>
+        <span class="profile-arrow">→</span>
+        <span class="profile-page">${escapeHtml(pageName)}</span>
+      </div>
+      <button onclick="removeAppProfile('${escapeHtml(appName)}')" class="btn-remove-profile" title="Eliminar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function populatePageSelect() {
+  const select = document.getElementById('profile-page-select');
+  select.innerHTML = '';
+  config.pages.forEach((page, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = page.name;
+    select.appendChild(option);
+  });
+}
+
+async function addAppProfile() {
+  const appName = document.getElementById('profile-app-name').value.trim().toLowerCase();
+  const pageIndex = parseInt(document.getElementById('profile-page-select').value);
+
+  if (!appName) {
+    document.getElementById('profile-app-name').focus();
+    showToast('Ingresa el nombre de la aplicación');
+    return;
+  }
+
+  appProfiles[appName] = pageIndex;
+
+  try {
+    await invoke('save_app_profiles', { appProfiles: appProfiles });
+    document.getElementById('profile-app-name').value = '';
+    renderProfilesList();
+    showToast(`Perfil agregado: ${appName} → ${config.pages[pageIndex].name}`);
+  } catch (e) {
+    console.error('Error saving app profile:', e);
+    showToast('Error al guardar perfil');
+  }
+}
+
+async function removeAppProfile(appName) {
+  delete appProfiles[appName];
+
+  try {
+    await invoke('save_app_profiles', { appProfiles: appProfiles });
+    renderProfilesList();
+    showToast(`Perfil eliminado`);
+  } catch (e) {
+    console.error('Error removing app profile:', e);
+    showToast('Error al eliminar perfil');
+  }
+}
 
 // ============================================================================
 // Global Hotkey Recording
