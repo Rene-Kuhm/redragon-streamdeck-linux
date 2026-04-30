@@ -1,6 +1,6 @@
-# Instalación en Arch Linux
+# Instalación en Arch Linux / CachyOS
 
-Guía completa para instalar Redragon Stream Deck Manager en Arch Linux.
+Guía completa para instalar Redragon Stream Deck Manager en Arch Linux, CachyOS y derivados.
 
 ## Requisitos Previos
 
@@ -9,13 +9,16 @@ Guía completa para instalar Redragon Stream Deck Manager en Arch Linux.
 ```bash
 # Dependencias básicas para Tauri/GTK
 sudo pacman -S --needed \
-    webkit2gtk \
+    webkit2gtk-4.1 \
     gtk3 \
     libusb \
     openssl \
     glib2 \
     base-devel \
-    git
+    git \
+    curl \
+    xdg-utils \
+    desktop-file-utils
 
 # Para simular teclado en Wayland (requerido para hotkeys)
 sudo pacman -S --needed ydotool
@@ -23,7 +26,7 @@ sudo pacman -S --needed ydotool
 # Para reproducción multimedia (opcional, para controles de media)
 sudo pacman -S --needed playerctl
 
-# Para controles de audio PipeWire (opcional)
+# Para controles de audio PipeWire con wpctl (opcional)
 sudo pacman -S --needed pipewire-pulse wireplumber
 ```
 
@@ -68,9 +71,6 @@ sudo udevadm trigger
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
 
-# Cambiar a la rama de la app Tauri
-git checkout feature/tauri-desktop-app
-
 # Ejecutar el instalador
 chmod +x install.sh
 ./install.sh
@@ -82,7 +82,6 @@ chmod +x install.sh
 # Clonar repositorio
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
-git checkout feature/tauri-desktop-app
 
 # Instalar Rust si no lo tienes
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
