@@ -178,26 +178,20 @@ export TWITCH_CHANNEL="tu_canal"
 
 ```bash
 mkdir -p ~/.config/systemd/user
-
-cat > ~/.config/systemd/user/redragon-streamdeck.service << 'EOF'
-[Unit]
-Description=Redragon Stream Deck Manager
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/redragon-streamdeck
-Restart=on-failure
-RestartSec=5
-Environment=DISPLAY=:0
-
-[Install]
-WantedBy=default.target
-EOF
+cp redragon-streamdeck.service ~/.config/systemd/user/redragon-streamdeck.service
 
 # Habilitar
+systemctl --user daemon-reload
 systemctl --user enable redragon-streamdeck.service
 systemctl --user start redragon-streamdeck.service
+```
+
+También puedes usar el instalador:
+
+```bash
+./install.sh --enable-autostart
+./install.sh --autostart-status
+./install.sh --disable-autostart
 ```
 
 ## Solución de Problemas
