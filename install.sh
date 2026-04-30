@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# Redragon Stream Deck Manager - Instalador para Arch Linux
+# Redragon Stream Deck Manager - Instalador para Arch Linux / CachyOS
 # =============================================================================
 
 set -e
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 print_header() {
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║     Redragon Stream Deck Manager - Instalador Arch Linux     ║"
+    echo "║   Redragon Stream Deck Manager - Instalador Arch/CachyOS     ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -36,11 +36,25 @@ print_success() {
     echo -e "${GREEN}[✓]${NC} $1"
 }
 
+user_has_input_group() {
+    groups | grep -qw input && return 0
+
+    if command -v getent &>/dev/null; then
+        getent group input | grep -qw "$USER" && return 0
+    fi
+
+    return 1
+}
+
 # Verificar que estamos en Arch Linux o derivados
 check_arch() {
     # Detectar Arch y derivados (CachyOS, Manjaro, EndeavourOS, etc.)
     if [ -f /etc/arch-release ]; then
-        print_success "Detectado: Arch Linux"
+        if [ -f /etc/os-release ] && grep -qi "cachyos" /etc/os-release; then
+            print_success "Detectado: CachyOS"
+        else
+            print_success "Detectado: Arch Linux"
+        fi
     elif [ -f /etc/os-release ] && grep -qi "arch\|cachyos\|manjaro\|endeavour\|garuda\|artix" /etc/os-release; then
         DISTRO_NAME=$(grep "^NAME=" /etc/os-release | cut -d'"' -f2)
         print_success "Detectado: $DISTRO_NAME (basado en Arch)"
@@ -58,7 +72,7 @@ check_arch() {
 install_dependencies() {
     print_step "Instalando dependencias del sistema..."
 
-    DEPS="webkit2gtk gtk3 libusb openssl glib2 base-devel ydotool playerctl"
+    DEPS="webkit2gtk-4.1 gtk3 libusb openssl glib2 base-devel git curl xdg-utils desktop-file-utils ydotool playerctl wireplumber"
 
     # Verificar cuáles ya están instaladas
     MISSING=""
@@ -110,10 +124,13 @@ YDOTOOL_EOF
     fi
 
     # Agregar usuario al grupo input
-    if ! groups | grep -q input; then
+    if ! user_has_input_group; then
         print_warning "Agregando usuario al grupo 'input'..."
         sudo usermod -aG input "$USER"
         print_warning "Necesitarás cerrar sesión y volver a iniciar para que los hotkeys funcionen"
+    elif ! groups | grep -qw input; then
+        print_warning "Tu usuario ya está agregado al grupo 'input', pero esta sesión aún no lo ve"
+        print_warning "Cierra sesión y vuelve a iniciar para que los hotkeys funcionen"
     fi
 
     print_success "ydotool configurado"
@@ -252,7 +269,7 @@ show_summary() {
     echo "  - INSTALL_ARCH.md (configuración de OBS/Twitch)"
     echo ""
 
-    if ! groups | grep -q input; then
+    if ! groups | grep -qw input; then
         echo -e "${YELLOW}⚠ IMPORTANTE: Cierra sesión y vuelve a iniciar para que los hotkeys funcionen${NC}"
         echo ""
     fi

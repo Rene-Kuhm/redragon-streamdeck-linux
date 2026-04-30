@@ -42,21 +42,20 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
   - Correr comerciales
   - Enviar mensajes al chat
 
-## Instalación en Arch Linux
+## Instalación en Arch Linux / CachyOS
 
 ### Método Rápido
 
 ```bash
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
-git checkout feature/tauri-desktop-app
 chmod +x install.sh
 ./install.sh
 ```
 
 ### Método Manual
 
-Ver [INSTALL_ARCH.md](INSTALL_ARCH.md) para instrucciones detalladas.
+Ver [INSTALL_ARCH.md](INSTALL_ARCH.md) para instrucciones detalladas en Arch Linux y CachyOS.
 
 ## Uso
 
