@@ -42,20 +42,32 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
   - Correr comerciales
   - Enviar mensajes al chat
 
-## Instalación en Arch Linux / CachyOS
-
-### Método Rápido
+## Instalación
 
 ```bash
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
-chmod +x install.sh
 ./install.sh
 ```
 
-### Método Manual
+El instalador detecta la distribución leyendo `/etc/os-release`, instala las
+dependencias, compila, configura la regla udev y ydotool, y deja la aplicación
+lista para arrancar sola al iniciar sesión.
 
-Ver [INSTALL_ARCH.md](INSTALL_ARCH.md) para instrucciones detalladas en Arch Linux y CachyOS.
+**Distribuciones soportadas:** Fedora/RHEL, Debian/Ubuntu, Arch y openSUSE.
+Los derivados (Linux Mint, Pop!_OS, CachyOS, EndeavourOS, Nobara...) funcionan
+automáticamente a través de `ID_LIKE`, sin necesidad de una entrada propia.
+
+En una distribución no listada, instalá las dependencias a mano y usá
+`./install.sh --skip-deps`.
+
+### Opciones
+
+| Opción | Efecto |
+|---|---|
+| `--build-only` | Solo compila, no toca el sistema |
+| `--skip-deps` | No instala dependencias del sistema |
+| `--no-autostart` | No configura el arranque automático |
 
 ## Uso
 
@@ -161,10 +173,9 @@ redragon-streamdeck-linux/
 │   ├── index.html     # Interfaz gráfica
 │   ├── app-tauri.js   # JavaScript frontend
 │   └── style.css      # Estilos
-├── install.sh         # Instalador Arch Linux
+├── install.sh         # Instalador (detecta la distribución)
 ├── redragon-streamdeck.service # Servicio systemd de usuario para auto-inicio
 ├── uninstall.sh       # Desinstalador
-├── INSTALL_ARCH.md    # Guía de instalación detallada
 └── CLAUDE.md          # Documentación de comandos
 ```
 
