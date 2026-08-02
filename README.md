@@ -2,6 +2,12 @@
 
 Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Linux.
 
+**Funciona en cualquier distribución de Linux.** No está atado a ninguna: se
+compila desde el código y habla con el dispositivo por USB, así que corre lo
+mismo en Fedora, Debian, Arch, openSUSE, Gentoo, Void, NixOS o la que uses. Lo
+único que cambia de una a otra es cuánto trabajo te ahorra el instalador — ver
+[Instalación](#instalación).
+
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-blue)
@@ -63,12 +69,34 @@ El instalador detecta la distribución leyendo `/etc/os-release`, instala las
 dependencias, compila, configura la regla udev y ydotool, y deja la aplicación
 lista para arrancar sola al iniciar sesión.
 
-**Distribuciones soportadas:** Fedora/RHEL, Debian/Ubuntu, Arch y openSUSE.
-Los derivados (Linux Mint, Pop!_OS, CachyOS, EndeavourOS, Nobara...) funcionan
-automáticamente a través de `ID_LIKE`, sin necesidad de una entrada propia.
+**En cualquier distribución funciona; lo que cambia es cuánto hace el
+instalador por vos.**
 
-En una distribución no listada, instalá las dependencias a mano y usá
-`./install.sh --skip-deps`.
+| Distribución | Qué hace falta |
+|---|---|
+| Fedora/RHEL, Debian/Ubuntu, Arch, openSUSE | Nada: `./install.sh` y listo |
+| Derivados (Mint, Pop!\_OS, CachyOS, EndeavourOS, Nobara…) | Nada: se reconocen solos por `ID_LIKE` |
+| Cualquier otra (Gentoo, Void, NixOS, Slackware…) | Instalar las dependencias a mano y usar `./install.sh --skip-deps` |
+
+Las dependencias son las mismas en todos lados, sólo cambian los nombres de los
+paquetes: compilador de C y Rust, `libusb`, GTK 3 y WebKit2GTK 4.1 para la
+interfaz, `librsvg` y appindicator para el icono de bandeja, OpenSSL, una fuente
+DejaVu para el texto de las teclas, y `ydotool` y `playerctl` para los atajos y
+el widget de música. Si tu distribución no está en la lista, el instalador te lo
+dice y te indica cómo seguir, en vez de fallar sin explicación.
+
+### Si tu sistema no usa systemd
+
+El arranque automático se configura con unidades de usuario de systemd. En
+distribuciones con otro init (runit, OpenRC, s6…) la aplicación funciona igual
+—no depende de systemd para nada de lo suyo— pero el arranque lo configurás vos:
+
+```bash
+./install.sh --no-autostart
+```
+
+Después lanzás `redragon-streamdeck` como prefieras: con el autoarranque de tu
+escritorio, un script de sesión o un servicio de tu propio init.
 
 ### Opciones
 
