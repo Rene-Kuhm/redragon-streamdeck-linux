@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Una serie de pushes seguidos al mismo PR no deberia acumular builds.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Las builds de CI no se depuran con gdb; ahorra tiempo y disco.
+  CARGO_PROFILE_RELEASE_DEBUG: none
+
+jobs:
+  build:
+    # El proyecto se distribuye como fuente que el usuario compila, asi que lo
+    # que hay que garantizar es que compile en las distros que documentamos.
+    # Un `install-fedora.sh` convivio con una ruta de fuente que solo existe en
+    # Arch, o sea que ese instalador nunca llego a ejecutarse entero.
+    name: build (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: fedora
+            image: fedora:latest
+          - distro: ubuntu
+            image: ubuntu:24.04
+          - distro: debian
+            image: debian:bookworm
+          - distro: arch
+            image: archlinux:latest
+
+    steps:
+      # Las dependencias van antes del checkout: los contenedores base no traen
+      # git y actions/checkout se degradaria a descargar un tarball.
+      - name: Install system dependencies (Fedora)
+        if: matrix.distro == 'fedora'
+        run: |
+          dnf install -y \
+            git gcc gcc-c++ make pkgconf-pkg-config curl \
+            webkit2gtk4.1-devel gtk3-devel libusb1-devel openssl-devel \
+            librsvg2-devel libappindicator-gtk3-devel \
+            dejavu-sans-fonts fontconfig
+
+      - name: Install system dependencies (Debian/Ubuntu)
+        if: matrix.distro == 'ubuntu' || matrix.distro == 'debian'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git build-essential pkg-config curl ca-certificates \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libusb-1.0-0-dev libssl-dev \
+            librsvg2-dev libayatana-appindicator3-dev \
+            fonts-dejavu-core fontconfig
+
+      - name: Install system dependencies (Arch)
+        if: matrix.distro == 'arch'
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git base-devel pkgconf curl \
+            webkit2gtk-4.1 gtk3 libusb openssl \
+            librsvg libayatana-appindicator \
+            ttf-dejavu fontconfig
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.distro }}
+
+      - name: Build
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+  build-without-dejavu:
+    # build.rs resuelve la fuente de los botones probando varias rutas y, como
+    # ultimo recurso, fontconfig. Este job comprueba ese camino: sin DejaVu
+    # instalada la build tiene que seguir funcionando (aca cae en Noto).
+    name: build (fedora, sin DejaVu)
+    runs-on: ubuntu-latest
+    container: fedora:latest
+
+    steps:
+      - name: Install system dependencies (no DejaVu)
+        run: |
+          dnf install -y \
+            git gcc gcc-c++ make pkgconf-pkg-config curl \
+            webkit2gtk4.1-devel gtk3-devel libusb1-devel openssl-devel \
+            librsvg2-devel libappindicator-gtk3-devel \
+            google-noto-sans-fonts fontconfig
+          # Si alguna dependencia arrastro DejaVu, sacarla: si no, el job
+          # comprobaria el camino feliz y no el fallback.
+          dnf remove -y dejavu-sans-fonts dejavu-fonts-all 2>/dev/null || true
+          ! fc-list | grep -qi DejaVuSans.ttf || {
+            echo "::error::DejaVu sigue instalada; este job no esta probando el fallback"
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: fedora-no-dejavu
+
+      - name: Build
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libusb-1.0-0-dev libssl-dev \
+            librsvg2-dev libayatana-appindicator3-dev \
+            fonts-dejavu-core fontconfig
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # fmt y clippy arrancan informativos a proposito: el arbol viene de antes
+      # de que existiera CI y todavia arrastra warnings (dead_code en las
+      # funciones de weather, entre otros). Bloquear con ellos desde el dia uno
+      # frenaria PRs que no tienen nada que ver. Sacar el continue-on-error
+      # cuando el arbol este limpio; lo bloqueante hoy son las builds por distro.
+      - name: rustfmt
+        continue-on-error: true
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: clippy
+        continue-on-error: true
+        run: cargo clippy --release --manifest-path src-tauri/Cargo.toml --all-targets
