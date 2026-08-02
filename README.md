@@ -42,20 +42,53 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
   - Correr comerciales
   - Enviar mensajes al chat
 
-## Instalación en Arch Linux / CachyOS
-
-### Método Rápido
+## Instalación
 
 ```bash
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
 cd redragon-streamdeck-linux-
-chmod +x install.sh
 ./install.sh
 ```
 
-### Método Manual
+El instalador detecta la distribución leyendo `/etc/os-release`, instala las
+dependencias, compila, configura la regla udev y ydotool, y deja la aplicación
+lista para arrancar sola al iniciar sesión.
 
-Ver [INSTALL_ARCH.md](INSTALL_ARCH.md) para instrucciones detalladas en Arch Linux y CachyOS.
+**Distribuciones soportadas:** Fedora/RHEL, Debian/Ubuntu, Arch y openSUSE.
+Los derivados (Linux Mint, Pop!_OS, CachyOS, EndeavourOS, Nobara...) funcionan
+automáticamente a través de `ID_LIKE`, sin necesidad de una entrada propia.
+
+En una distribución no listada, instalá las dependencias a mano y usá
+`./install.sh --skip-deps`.
+
+### Opciones
+
+| Opción | Efecto |
+|---|---|
+| `--build-only` | Solo compila, no toca el sistema |
+| `--skip-deps` | No instala dependencias del sistema |
+| `--no-autostart` | No configura el arranque automático |
+| `--daemon-only` | Solo el daemon, sin interfaz gráfica |
+
+### Uso sin entorno gráfico
+
+El proyecto se divide en un daemon que maneja el dispositivo y una interfaz
+gráfica opcional para configurarlo. El daemon no depende de Tauri, GTK ni
+webkit, así que funciona en un equipo sin escritorio, por SSH o en un servidor:
+
+```bash
+./install.sh --daemon-only
+```
+
+Ambos comparten el mismo `config.json`, de modo que podés configurar los botones
+con la aplicación en un equipo y después dejar corriendo solo el daemon. No
+pueden usar el dispositivo a la vez: los units de systemd lo declaran con
+`Conflicts=`.
+
+```bash
+systemctl --user disable --now redragon-streamdeck   # apagar la interfaz
+systemctl --user enable  --now redragon-daemon       # usar solo el daemon
+```
 
 ## Uso
 
@@ -161,10 +194,9 @@ redragon-streamdeck-linux/
 │   ├── index.html     # Interfaz gráfica
 │   ├── app-tauri.js   # JavaScript frontend
 │   └── style.css      # Estilos
-├── install.sh         # Instalador Arch Linux
+├── install.sh         # Instalador (detecta la distribución)
 ├── redragon-streamdeck.service # Servicio systemd de usuario para auto-inicio
 ├── uninstall.sh       # Desinstalador
-├── INSTALL_ARCH.md    # Guía de instalación detallada
 └── CLAUDE.md          # Documentación de comandos
 ```
 
