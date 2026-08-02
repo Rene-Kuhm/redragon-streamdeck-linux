@@ -19,8 +19,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tungstenite::{connect, Message};
 
-pub const YDOTOOL_SOCKET: &str = "/tmp/.ydotool_socket";
-
 #[macro_export]
 macro_rules! debug_log {
     ($($arg:tt)*) => {
@@ -30,9 +28,39 @@ macro_rules! debug_log {
     };
 }
 
+/// Where ydotoold's socket usually lives, in order of preference.
+///
+/// Recent ydotool defaults to `$XDG_RUNTIME_DIR/.ydotool_socket`; `/tmp` is the
+/// older location and what most setup guides still tell people to use.
+pub fn ydotool_socket_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        candidates.push(PathBuf::from(runtime_dir).join(".ydotool_socket"));
+    }
+    candidates.push(PathBuf::from("/tmp/.ydotool_socket"));
+    candidates
+}
+
 pub fn ydotool_command() -> Command {
     let mut command = Command::new("ydotool");
-    command.env("YDOTOOL_SOCKET", YDOTOOL_SOCKET);
+
+    // If the environment already sets YDOTOOL_SOCKET it wins: whoever started
+    // ydotoold knows where its socket is. This used to be overwritten with a
+    // hardcoded /tmp path unconditionally, so any setup whose daemon listened
+    // elsewhere silently did nothing.
+    if std::env::var_os("YDOTOOL_SOCKET").is_none() {
+        if let Some(socket) = ydotool_socket_candidates()
+            .into_iter()
+            .find(|path| path.exists())
+        {
+            debug_log!("Using ydotool socket at {}", socket.display());
+            command.env("YDOTOOL_SOCKET", socket);
+        }
+        // Nothing found: leave it unset so ydotool applies its own default and
+        // reports the failure itself, which is clearer than pointing it at a
+        // path we invented.
+    }
+
     command
 }
 
@@ -767,24 +795,63 @@ pub fn get_widget_ram() -> String {
     format!("{:.0}%", percent)
 }
 
+/// hwmon driver names that expose a CPU temperature, most specific first.
+///
+/// Picking a sensor by index does not work: `thermal_zone0` and `hwmon0` are the
+/// CPU on some machines and the chipset, the battery or the WiFi card on others,
+/// so the widget would confidently show an unrelated number. The driver name is
+/// the only portable way to know what is being read.
+pub const CPU_HWMON_NAMES: &[&str] = &[
+    "coretemp",    // Intel
+    "k10temp",     // AMD, family 10h and later
+    "zenpower",    // AMD Zen, out-of-tree alternative to k10temp
+    "cpu_thermal", // ARM SoCs, Raspberry Pi
+    "acpitz",      // ACPI thermal zone, last resort
+];
+
+fn read_hwmon_millidegrees(hwmon: &std::path::Path) -> Option<i32> {
+    // temp1_input is the package/overall reading for every driver listed above;
+    // temp2_input covers drivers that start numbering at the first core.
+    ["temp1_input", "temp2_input"].iter().find_map(|file| {
+        fs::read_to_string(hwmon.join(file))
+            .ok()?
+            .trim()
+            .parse::<i32>()
+            .ok()
+    })
+}
+
+pub fn cpu_temp_millidegrees() -> Option<i32> {
+    cpu_temp_millidegrees_in(std::path::Path::new("/sys/class/hwmon"))
+}
+
+pub fn cpu_temp_millidegrees_in(hwmon_root: &std::path::Path) -> Option<i32> {
+    let sensors: Vec<(String, PathBuf)> = fs::read_dir(hwmon_root)
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = fs::read_to_string(path.join("name")).ok()?;
+            Some((name.trim().to_string(), path))
+        })
+        .collect();
+
+    CPU_HWMON_NAMES.iter().find_map(|wanted| {
+        sensors
+            .iter()
+            // Some drivers append an instance suffix (acpitz_0, iwlwifi_1_3),
+            // so an exact match alone would miss them.
+            .find(|(name, _)| name == wanted || name.starts_with(&format!("{wanted}_")))
+            .and_then(|(_, path)| read_hwmon_millidegrees(path))
+    })
+}
+
 // Get CPU temperature (Linux-specific)
 pub fn get_widget_temp() -> String {
-    // Try to read from thermal zone
-    if let Ok(temp) = fs::read_to_string("/sys/class/thermal/thermal_zone0/temp") {
-        if let Ok(millidegrees) = temp.trim().parse::<i32>() {
-            return format!("{}°C", millidegrees / 1000);
-        }
+    match cpu_temp_millidegrees() {
+        Some(millidegrees) => format!("{}°C", millidegrees / 1000),
+        None => "N/A".to_string(),
     }
-    // Fallback: try hwmon
-    for i in 0..10 {
-        let path = format!("/sys/class/hwmon/hwmon{}/temp1_input", i);
-        if let Ok(temp) = fs::read_to_string(&path) {
-            if let Ok(millidegrees) = temp.trim().parse::<i32>() {
-                return format!("{}°C", millidegrees / 1000);
-            }
-        }
-    }
-    "N/A".to_string()
 }
 
 // Weather widget config storage
@@ -1802,7 +1869,7 @@ pub fn get_twitch_followers_text() -> String {
 // Read a key press from the device
 // Returns (key_id, state) where state=1 means pressed, state=0 means released
 pub fn read_key_press(handle: &DeviceHandle<Context>) -> Result<(u8, u8), String> {
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; PACKET_SIZE];
 
     // Read from endpoint 0x82 (IN endpoint)
     match handle.read_interrupt(0x82, &mut buf, Duration::from_millis(100)) {
@@ -1817,6 +1884,9 @@ pub fn read_key_press(handle: &DeviceHandle<Context>) -> Result<(u8, u8), String
             }
         }
         Err(rusb::Error::Timeout) => Err("timeout".to_string()),
+        // Recoverable: the packet is gone but the connection is fine. Reported
+        // separately so the listener does not treat it as a dead device.
+        Err(rusb::Error::Overflow) => Err("overflow".to_string()),
         Err(e) => Err(format!("USB read error: {}", e)),
     }
 }
@@ -2143,7 +2213,10 @@ pub fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
                         }
                     }
                     Err(e) => {
-                        if e != "timeout" {
+                        // Only a genuinely broken connection warrants reconnecting:
+                        // rebuilding it costs a full 15-image page reload, during
+                        // which every press is dropped.
+                        if e != "timeout" && e != "overflow" {
                             debug_log!("Button listener error: {}", e);
                             break; // Reconnect
                         }
@@ -2235,4 +2308,87 @@ pub fn chrono_lite() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a fake /sys/class/hwmon tree: one directory per (name, temp).
+    ///
+    /// `label` has to be unique per test: these run in parallel and a shared
+    /// directory means one test wipes another's fixture mid-run.
+    fn fake_hwmon(label: &str, sensors: &[(&str, &str)]) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "redragon-hwmon-test-{}-{label}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        for (index, (name, temp)) in sensors.iter().enumerate() {
+            let dir = root.join(format!("hwmon{index}"));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("name"), format!("{name}\n")).unwrap();
+            fs::write(dir.join("temp1_input"), format!("{temp}\n")).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn prefers_the_cpu_sensor_over_whatever_comes_first() {
+        // Real ordering from an i7-14700F box: hwmon0 is the ACPI thermal zone
+        // reading 16.8 C while the CPU sits at 46 C. Indexing into hwmon0 (or
+        // thermal_zone0) reports the wrong component entirely.
+        let root = fake_hwmon(
+            "intel-box",
+            &[
+                ("acpitz_0", "16800"),
+                ("nvme", "43850"),
+                ("amdgpu", "46000"),
+                ("coretemp", "46000"),
+                ("iwlwifi_1_3", "34000"),
+            ],
+        );
+
+        assert_eq!(cpu_temp_millidegrees_in(&root), Some(46000));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn falls_back_through_the_preference_list() {
+        // No coretemp: an AMD box should land on k10temp, not on the NVMe drive.
+        let root = fake_hwmon("amd-box", &[("nvme", "43850"), ("k10temp", "52000")]);
+        assert_eq!(cpu_temp_millidegrees_in(&root), Some(52000));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn matches_driver_names_carrying_an_instance_suffix() {
+        // acpitz shows up as acpitz_0 on plenty of machines.
+        let root = fake_hwmon("suffixed", &[("nvme", "43850"), ("acpitz_0", "31000")]);
+        assert_eq!(cpu_temp_millidegrees_in(&root), Some(31000));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reports_nothing_when_no_known_cpu_sensor_exists() {
+        // Better to show N/A than a confident reading of the wrong component.
+        let root = fake_hwmon(
+            "no-cpu-sensor",
+            &[("nvme", "43850"), ("r8169_0_600:00", "38500")],
+        );
+        assert_eq!(cpu_temp_millidegrees_in(&root), None);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ydotool_socket_candidates_prefer_the_runtime_dir() {
+        // Recent ydotool defaults to $XDG_RUNTIME_DIR; /tmp is the legacy spot.
+        std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000");
+        let candidates = ydotool_socket_candidates();
+        assert_eq!(
+            candidates[0],
+            PathBuf::from("/run/user/1000/.ydotool_socket")
+        );
+        assert!(candidates.contains(&PathBuf::from("/tmp/.ydotool_socket")));
+    }
 }
