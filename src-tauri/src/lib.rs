@@ -15,6 +15,8 @@ use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, State};
 
 // El core exporta todo lo que la GUI necesita: tipos de configuracion, acceso
@@ -1945,7 +1947,51 @@ pub fn run() {
 
             app.manage(state);
 
+            // Icono de bandeja.
+            //
+            // Es lo que hace que cerrar la ventana sea seguro: el hilo que
+            // escucha los botones vive en este proceso, asi que si la ventana
+            // terminara la aplicacion el aparato dejaria de responder. Con la
+            // bandeja la ventana se oculta y el dispositivo sigue atendido.
+            //
+            // En Linux el indicador de bandeja no entrega los clics, solo abre
+            // el menu, asi que "Abrir" tiene que existir como entrada: no
+            // alcanza con confiar en el clic sobre el icono.
+            let abrir = MenuItem::with_id(app, "abrir", "Abrir", true, None::<&str>)?;
+            let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&abrir, &salir])?;
+
+            let mut tray = TrayIconBuilder::with_id("principal")
+                .tooltip("Redragon Stream Deck")
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "abrir" => {
+                        if let Some(ventana) = app.get_webview_window("main") {
+                            let _ = ventana.show();
+                            let _ = ventana.unminimize();
+                            let _ = ventana.set_focus();
+                        }
+                    }
+                    // Unica forma de terminar el proceso ahora que cerrar solo
+                    // oculta.
+                    "salir" => app.exit(0),
+                    _ => {}
+                });
+
+            if let Some(icono) = app.default_window_icon() {
+                tray = tray.icon(icono.clone());
+            }
+            tray.build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|ventana, evento| {
+            // Cerrar oculta en vez de salir; se sale desde el menu de bandeja.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = evento {
+                api.prevent_close();
+                let _ = ventana.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_config,
