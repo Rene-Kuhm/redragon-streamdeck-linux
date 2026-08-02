@@ -10,25 +10,34 @@ Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Li
 ## Características
 
 ### Funciones Básicas
-- Interfaz gráfica nativa (Tauri/GTK)
+- Interfaz gráfica nativa (Tauri/GTK), organizada en tres columnas: páginas a
+  la izquierda, la grilla de teclas al centro y una biblioteca de acciones
+  buscable a la derecha
 - Soporte para múltiples páginas de botones
 - Iconos personalizados (100x100)
 - Ejecución de comandos del sistema
 - Control de brillo
 - Navegación entre páginas con botones físicos
+- **Cerrar la ventana no cierra la aplicación**: se oculta en la bandeja y el
+  dispositivo sigue atendido
 - Compatible con Wayland (Hyprland, Sway, GNOME) y X11
 
 ### Funciones Avanzadas
 - **URLs**: Abrir páginas web con un botón
 - **Texto**: Escribir texto automáticamente (ydotool)
 - **Hotkeys**: Simular atajos de teclado (Ctrl+C, Alt+Tab, etc.)
+- **Atajos globales**: Disparar un botón desde el teclado, sin tocar el aparato
 - **Multi-acción**: Secuencias de comandos con delays
+- **Perfiles por aplicación**: Cambiar de página automáticamente según la
+  aplicación que esté en primer plano
 
 ### Widgets Dinámicos (actualización automática)
 - **Reloj**: Hora actual (con/sin segundos)
 - **Fecha**: Día, mes, año, día de la semana
 - **Sistema**: CPU%, RAM%, Temperatura
 - **Temporizador**: Cuenta regresiva configurable
+- **Clima**: Temperatura y estado actual (Open-Meteo)
+- **Música**: Lo que está sonando, vía playerctl
 
 ### Integraciones de Streaming
 - **OBS Studio** (WebSocket 5.x):
@@ -99,6 +108,11 @@ redragon-streamdeck
 ```
 
 O busca "Redragon Stream Deck" en el menú de aplicaciones.
+
+Cerrar la ventana **no** cierra la aplicación: se oculta en la bandeja y el
+Stream Deck sigue funcionando. Para volver a abrirla, o para salir de verdad,
+usá el menú del icono de la bandeja. Hace falta porque el hilo que atiende los
+botones vive en el proceso de la interfaz.
 
 ### Auto-inicio
 
@@ -185,20 +199,58 @@ export TWITCH_CHANNEL="tu_canal"
 
 ## Estructura del Proyecto
 
+Es un workspace de cargo con tres crates. La separación existe para que el
+dispositivo se pueda manejar sin entorno gráfico: el daemon no enlaza webkit ni
+GTK.
+
 ```
 redragon-streamdeck-linux/
+├── crates/
+│   ├── core/            # redragon-core: USB, widgets, OBS, Twitch. Sin Tauri
+│   └── daemon/          # redragon-daemon: ejecutable sin interfaz
 ├── src-tauri/
-│   ├── src/lib.rs     # Backend Rust (USB, OBS, Twitch)
-│   └── Cargo.toml     # Dependencias Rust
+│   └── src/lib.rs       # La interfaz: comandos de Tauri y arranque
 ├── public/
-│   ├── index.html     # Interfaz gráfica
-│   ├── app-tauri.js   # JavaScript frontend
-│   └── style.css      # Estilos
-├── install.sh         # Instalador (detecta la distribución)
-├── redragon-streamdeck.service # Servicio systemd de usuario para auto-inicio
-├── uninstall.sh       # Desinstalador
-└── CLAUDE.md          # Documentación de comandos
+│   ├── index.html       # Interfaz de escritorio (Tauri)
+│   ├── app-tauri.js     #   lógica y puente con el backend
+│   ├── ui-shell.js      #   presentación: biblioteca de acciones, paneles
+│   ├── style.css        #   estilos
+│   ├── index-web.html   # Interfaz del servidor Node (ver abajo)
+│   ├── app.js           #   su cliente HTTP
+│   └── style-web.css    #   sus estilos
+├── src/server.ts        # Servidor Express opcional, alternativa a Tauri
+├── install.sh           # Instalador (detecta la distribución)
+├── uninstall.sh         # Desinstalador
+├── redragon-streamdeck.service  # Unidad systemd de la interfaz
+├── redragon-daemon.service      # Unidad systemd del daemon
+└── CLAUDE.md            # Notas técnicas y de mantenimiento
 ```
+
+**Hay dos interfaces y las dos funcionan.** La de Tauri es la que instala
+`install.sh` y la que se usa normalmente. La otra es un cliente web servido por
+`src/server.ts` (Express, con sus propias dependencias `usb` y `jimp`), que se
+levanta con `npm start`. Cada una tiene su hoja de estilos, así que se pueden
+modificar por separado.
+
+El binario compilado queda en **`target/release/`**, en la raíz del workspace,
+no dentro de `src-tauri/`.
+
+## Actualizaciones
+
+La aplicación avisa sola cuando hay una versión nueva. En **Ajustes → Acerca de**
+se ve la versión instalada, la revisión y si estás al día; la versión también
+queda a la vista en la barra de título.
+
+Cuando hay una disponible, el botón de instalar descarga la versión publicada,
+la compila y reemplaza el binario en marcha, dejando una copia `.bak` de la
+anterior. Si la aplicación corre como servicio de usuario, se encarga de pararlo
+y volver a arrancarlo.
+
+Del lado del repositorio, los releases se publican solos: al mergear a `main`,
+si las builds de las cuatro distribuciones pasan, se etiqueta y se publica una
+versión nueva. El número sale de los prefijos de los commits — `feat` sube la
+minor, `fix` la patch — y los cambios que sólo tocan documentación o CI no
+generan versión.
 
 ## Solución de Problemas
 
@@ -253,13 +305,28 @@ YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool key 29:1 29:0
 
 ### Error "Interface Busy"
 
-```bash
-# Buscar procesos usando el dispositivo
-pkill -f redragon
+Significa que otro proceso ya tiene el dispositivo tomado: `claim_interface` es
+exclusivo, así que sólo uno puede manejarlo a la vez. Lo habitual es que hayan
+quedado dos instancias, o que estén corriendo la interfaz y el daemon juntos.
 
-# Reiniciar la aplicación
-redragon-streamdeck
+```bash
+# Ver si el servicio ya lo está manejando
+systemctl --user status redragon-streamdeck
+
+# Reiniciarlo, que es lo que corresponde si está gestionado por systemd
+systemctl --user restart redragon-streamdeck
 ```
+
+Si quedaron procesos sueltos, fuera de systemd:
+
+```bash
+pkill -x redragon-stream
+```
+
+> **No uses `pkill -f`** con la ruta del binario: el patrón aparece en la línea
+> de comandos del propio shell y termina matando cosas que no querías. El `-x`
+> compara contra el nombre del proceso, que el kernel trunca a 15 caracteres —
+> de ahí que el patrón vaya cortado.
 
 ## Desinstalar
 
