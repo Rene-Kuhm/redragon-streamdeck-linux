@@ -164,3 +164,106 @@ jobs:
       - name: clippy
         continue-on-error: true
         run: cargo clippy --release --workspace --all-targets
+
+  release:
+    # El aviso de actualizacion de la app mira los releases publicados, asi que
+    # publicar uno es lo que hace llegar un cambio a los usuarios. Depende de
+    # las builds por distro: nada se publica sin haber compilado en las cuatro.
+    #
+    # No depende de `lint` a proposito, porque hoy es informativo
+    # (continue-on-error) y no deberia poder frenar una publicacion.
+    name: publicar release
+    needs: [build, build-without-dejavu]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Hace falta el historial completo y las etiquetas para saber desde
+          # donde calcular la version.
+          fetch-depth: 0
+
+      - name: Calcular la proxima version
+        id: v
+        run: |
+          set -euo pipefail
+
+          ultima=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$ultima" ]; then
+            rango=""
+            base="0.0.0"
+          else
+            rango="$ultima..HEAD"
+            # Se descarta cualquier sufijo tipo -tauri para poder hacer cuentas.
+            base="${ultima#v}"
+            base="${base%%-*}"
+          fi
+          echo "Ultima etiqueta: ${ultima:-(ninguna)}"
+
+          asuntos=$(git log --format=%s ${rango:+$rango})
+          cuerpos=$(git log --format=%B ${rango:+$rango})
+
+          # Se sigue el mismo convenio que ya usan los commits del repo.
+          salto=""
+          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$asuntos" || grep -q 'BREAKING CHANGE' <<<"$cuerpos"; then
+            salto="major"
+          elif grep -qE '^feat(\([^)]*\))?:' <<<"$asuntos"; then
+            salto="minor"
+          elif grep -qE '^(fix|perf|refactor)(\([^)]*\))?:' <<<"$asuntos"; then
+            salto="patch"
+          fi
+
+          # Sin cambios que le importen al usuario no se publica nada: si no,
+          # cada retoque de documentacion o de CI generaria una version y le
+          # avisaria a todo el mundo que hay actualizacion.
+          if [ -z "$salto" ]; then
+            echo "Solo hubo cambios que no afectan al usuario; no se publica."
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS=. read -r may min par <<<"$base"
+          case "$salto" in
+            major) may=$((may + 1)); min=0; par=0 ;;
+            minor) min=$((min + 1)); par=0 ;;
+            patch) par=$((par + 1)) ;;
+          esac
+
+          etiqueta="v${may}.${min}.${par}"
+          echo "Salto: $salto -> $etiqueta"
+
+          if git rev-parse "$etiqueta" >/dev/null 2>&1; then
+            echo "La etiqueta $etiqueta ya existe; no se publica."
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "publicar=true"
+            echo "etiqueta=$etiqueta"
+            echo "anterior=$ultima"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        if: steps.v.outputs.publicar == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ETIQUETA: ${{ steps.v.outputs.etiqueta }}
+          ANTERIOR: ${{ steps.v.outputs.anterior }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$ETIQUETA" -m "$ETIQUETA"
+          git push origin "$ETIQUETA"
+
+          # --generate-notes arma la lista de cambios a partir de los PR
+          # mergeados desde la etiqueta anterior.
+          gh release create "$ETIQUETA" \
+            --title "$ETIQUETA" \
+            --generate-notes \
+            ${ANTERIOR:+--notes-start-tag "$ANTERIOR"}

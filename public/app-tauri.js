@@ -1027,7 +1027,11 @@ function skipUpdate() {
 async function performUpdate() {
   try {
     showToast('Iniciando actualización...');
-    const result = await invoke('install_update');
+    // latest_commit trae la etiqueta del release; el script clona esa etiqueta
+    // en vez de la punta de main, así se instala exactamente lo publicado.
+    const result = await invoke('install_update', {
+      tag: currentUpdateInfo ? currentUpdateInfo.latest_commit : null,
+    });
     showToast(result);
     // Close modal
     closeUpdateModal();
