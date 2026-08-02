@@ -730,26 +730,40 @@ fn get_icons_path(state: State<AppState>) -> String {
     state.icons_path.to_string_lossy().to_string()
 }
 
+/// Where install.sh puts the rule, plus the locations older versions used.
+///
+/// The 60- prefix matters: uaccess is applied by 73-seat-late.rules, so a rule
+/// numbered 99- is evaluated afterwards and the tag never takes effect. The old
+/// 99- rules only appeared to work because they also set MODE="0666".
+const UDEV_RULE_PATH: &str = "/etc/udev/rules.d/60-redragon-streamdeck.rules";
+const LEGACY_UDEV_RULE_PATHS: &[&str] = &[
+    "/etc/udev/rules.d/99-redragon-streamdeck.rules",
+    "/etc/udev/rules.d/99-redragon.rules",
+];
+
 #[tauri::command]
 fn setup_udev_rules() -> Result<bool, String> {
-    let rules_path = "/etc/udev/rules.d/99-redragon-streamdeck.rules";
-    let legacy_rules_path = "/etc/udev/rules.d/99-redragon.rules";
-    let rules_content = r#"SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess""#;
+    // TAG+="uaccess" grants the active local session access, which is all this
+    // needs. MODE="0666" — what previous versions wrote — additionally made the
+    // device writable by every user on the machine, for no benefit.
+    let rules_content = format!(
+        r#"SUBSYSTEM=="usb", ATTR{{idVendor}}=="{:04x}", ATTR{{idProduct}}=="{:04x}", TAG+="uaccess""#,
+        VENDOR_ID, PRODUCT_ID
+    );
 
-    // Check if rules already exist
-    if std::path::Path::new(rules_path).exists() || std::path::Path::new(legacy_rules_path).exists()
-    {
+    if check_udev_rules() {
         return Ok(true);
     }
 
-    // Try to create rules using pkexec
+    // Installing this is install.sh's job; this command is the fallback for
+    // people who grabbed a prebuilt binary and never ran it.
     let result = Command::new("pkexec")
         .args([
             "bash",
             "-c",
             &format!(
-                "echo '{}' > {} && udevadm control --reload-rules && udevadm trigger",
-                rules_content, rules_path
+                "printf '%s\\n' '{}' > {} && udevadm control --reload-rules && udevadm trigger",
+                rules_content, UDEV_RULE_PATH
             ),
         ])
         .status();
@@ -762,8 +776,10 @@ fn setup_udev_rules() -> Result<bool, String> {
 
 #[tauri::command]
 fn check_udev_rules() -> bool {
-    std::path::Path::new("/etc/udev/rules.d/99-redragon-streamdeck.rules").exists()
-        || std::path::Path::new("/etc/udev/rules.d/99-redragon.rules").exists()
+    std::path::Path::new(UDEV_RULE_PATH).exists()
+        || LEGACY_UDEV_RULE_PATHS
+            .iter()
+            .any(|path| std::path::Path::new(path).exists())
 }
 
 #[tauri::command]
