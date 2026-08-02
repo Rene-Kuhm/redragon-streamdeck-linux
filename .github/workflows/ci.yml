@@ -80,16 +80,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
           key: ${{ matrix.distro }}
 
       - name: Build
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --workspace
 
       # Se corren en cada distro a proposito: las pruebas tocan rutas de sysfs y
       # del entorno, que es justamente lo que cambia entre distribuciones.
       - name: Test
-        run: cargo test --release --manifest-path src-tauri/Cargo.toml
+        run: cargo test --release --workspace
 
   build-without-dejavu:
     # build.rs resuelve la fuente de los botones probando varias rutas y, como
@@ -125,11 +124,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
           key: fedora-no-dejavu
 
       - name: Build
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --workspace
 
   lint:
     name: fmt + clippy
@@ -153,8 +151,6 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       # fmt y clippy arrancan informativos a proposito: el arbol viene de antes
       # de que existiera CI y todavia arrastra warnings (dead_code en las
@@ -163,8 +159,8 @@ jobs:
       # cuando el arbol este limpio; lo bloqueante hoy son las builds por distro.
       - name: rustfmt
         continue-on-error: true
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: clippy
         continue-on-error: true
-        run: cargo clippy --release --manifest-path src-tauri/Cargo.toml --all-targets
+        run: cargo clippy --release --workspace --all-targets
