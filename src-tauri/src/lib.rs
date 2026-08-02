@@ -787,7 +787,9 @@ fn generate_button_image(button: &ButtonConfig, icons_path: &PathBuf) -> Result<
 
     // Draw text if specified
     if !display_text.is_empty() {
-        let font_data = include_bytes!("/usr/share/fonts/TTF/DejaVuSans.ttf");
+        // La fuente la resuelve build.rs y la deja en OUT_DIR: la ruta absoluta
+        // que habia antes solo existe en Arch y rompia el build en el resto.
+        let font_data = include_bytes!(concat!(env!("OUT_DIR"), "/button-font.ttf"));
         if let Ok(font) = FontRef::try_from_slice(font_data) {
             let scale = if display_text.len() > 8 {
                 PxScale::from(16.0)
