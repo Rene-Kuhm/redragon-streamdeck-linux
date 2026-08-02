@@ -491,6 +491,16 @@ fn set_page(state: State<AppState>, index: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// `true` si el comando mueve de pagina.
+///
+/// Cubre los tres tokens, incluido `__PAGE_N__`, cuyo numero varia: alguien
+/// puede tener un salto directo en vez de avanzar y retroceder.
+fn es_navegacion_de_pagina(comando: &str) -> bool {
+    comando == "__NEXT_PAGE__"
+        || comando == "__PREV_PAGE__"
+        || (comando.starts_with("__PAGE_") && comando.ends_with("__"))
+}
+
 #[tauri::command]
 fn add_page(state: State<AppState>, name: String) -> Result<usize, String> {
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
@@ -506,6 +516,25 @@ fn add_page(state: State<AppState>, name: String) -> Result<usize, String> {
                 icon: String::new(),
             },
         );
+    }
+
+    // La pagina nueva hereda los botones de navegacion de la actual.
+    //
+    // Una pagina completamente vacia es una trampa: se puede entrar con
+    // __NEXT_PAGE__ pero no salir, porque los botones de navegacion son por
+    // pagina. Desde el aparato queda sin ninguna tecla que responda, que se
+    // vive como "se rompio el Stream Deck" y solo se sale por la interfaz.
+    //
+    // Se copian de la pagina actual en vez de poner unos por defecto para
+    // respetar donde los tiene puestos cada uno, con su icono y su etiqueta. Si
+    // esa pagina no tiene navegacion, la nueva tampoco: quien no los usa se
+    // mueve por la interfaz y no le sirve que aparezcan solos.
+    if let Some(actual) = config.pages.get(config.current_page) {
+        for (tecla, boton) in &actual.buttons {
+            if es_navegacion_de_pagina(&boton.command) {
+                buttons.insert(tecla.clone(), boton.clone());
+            }
+        }
     }
 
     config.pages.push(Page { name, buttons });
@@ -2083,5 +2112,27 @@ mod tests {
         // Preferible callar antes que anunciar una actualizacion que el
         // usuario no puede resolver.
         assert!(!is_newer("nightly", "2.0.0"));
+    }
+}
+
+#[cfg(test)]
+mod tests_navegacion {
+    use super::es_navegacion_de_pagina;
+
+    #[test]
+    fn reconoce_los_tres_tokens_de_pagina() {
+        assert!(es_navegacion_de_pagina("__NEXT_PAGE__"));
+        assert!(es_navegacion_de_pagina("__PREV_PAGE__"));
+        assert!(es_navegacion_de_pagina("__PAGE_0__"));
+        assert!(es_navegacion_de_pagina("__PAGE_12__"));
+    }
+
+    #[test]
+    fn ignora_lo_que_no_mueve_de_pagina() {
+        assert!(!es_navegacion_de_pagina(""));
+        assert!(!es_navegacion_de_pagina("firefox"));
+        assert!(!es_navegacion_de_pagina("__CLOCK__"));
+        // Un guion bajo al final es un token invalido, no navegacion.
+        assert!(!es_navegacion_de_pagina("__PAGE_2"));
     }
 }
