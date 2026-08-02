@@ -208,7 +208,12 @@ jobs:
 
           # Se sigue el mismo convenio que ya usan los commits del repo.
           salto=""
-          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$asuntos" || grep -q 'BREAKING CHANGE' <<<"$cuerpos"; then
+          # BREAKING CHANGE solo cuenta como pie de mensaje: al principio de
+          # una linea y seguido de dos puntos. Buscarlo en cualquier parte del
+          # cuerpo hacia que un commit que se limitara a *mencionar* la
+          # convencion —como el que introdujo este job— se tomara por un cambio
+          # incompatible y saltara de version mayor.
+          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$asuntos" || grep -qE '^BREAKING[ -]CHANGE:' <<<"$cuerpos"; then
             salto="major"
           elif grep -qE '^feat(\([^)]*\))?:' <<<"$asuntos"; then
             salto="minor"
