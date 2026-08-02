@@ -971,11 +971,12 @@ function showUpdateModal() {
   const modal = document.getElementById('update-modal');
   if (!modal) return;
 
-  // Populate version info
+  // El backend compara contra el último release publicado, así que
+  // latest_commit_short trae la etiqueta ("v2.1.0") y ya viene con la "v".
   document.getElementById('current-version-display').textContent = `v${currentUpdateInfo.current_version}`;
   document.getElementById('current-commit-display').textContent = currentUpdateInfo.current_commit;
-  document.getElementById('new-version-display').textContent = `v${currentUpdateInfo.current_version}+`;
-  document.getElementById('new-commit-display').textContent = currentUpdateInfo.latest_commit_short;
+  document.getElementById('new-version-display').textContent = currentUpdateInfo.latest_commit_short || '—';
+  document.getElementById('new-commit-display').textContent = currentUpdateInfo.update_date || '';
 
   // Populate changelog
   const changelogList = document.getElementById('changelog-list');
