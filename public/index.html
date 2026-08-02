@@ -29,6 +29,7 @@
       </span>
     </div>
     <div class="titlebar-right">
+      <span id="titlebar-version" class="titlebar-version" title="Versión instalada"></span>
       <span class="titlebar-author">por <strong>Tecnodespegue</strong></span>
     </div>
   </div>
@@ -267,7 +268,20 @@ TWITCH_CHANNEL=…</pre>
       <button class="icon-btn" onclick="toggleSettingsPanel()">&times;</button>
     </div>
     <div class="side-panel-body">
-      <button onclick="checkForUpdates()" class="btn btn-quiet btn-block">Buscar actualizaciones</button>
+      <h4>Acerca de</h4>
+      <div class="about">
+        <div class="about-row">
+          <span class="about-label">Versión instalada</span>
+          <span id="app-version" class="about-version">—</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">Revisión</span>
+          <span id="app-commit" class="about-commit">—</span>
+        </div>
+        <div id="update-status" class="about-status is-checking">Comprobando actualizaciones…</div>
+      </div>
+
+      <button onclick="buscarActualizaciones()" class="btn btn-quiet btn-block">Buscar actualizaciones</button>
       <button onclick="confirmReset()" class="btn btn-quiet btn-block btn-danger-text">Restablecer configuración</button>
       <p class="side-panel-note">
         Redragon Stream Deck para Linux &mdash; hecho por <strong>Tecnodespegue</strong>.<br>
