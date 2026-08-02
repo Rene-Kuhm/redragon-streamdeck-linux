@@ -86,6 +86,11 @@ jobs:
       - name: Build
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
 
+      # Se corren en cada distro a proposito: las pruebas tocan rutas de sysfs y
+      # del entorno, que es justamente lo que cambia entre distribuciones.
+      - name: Test
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml
+
   build-without-dejavu:
     # build.rs resuelve la fuente de los botones probando varias rutas y, como
     # ultimo recurso, fontconfig. Este job comprueba ese camino: sin DejaVu
