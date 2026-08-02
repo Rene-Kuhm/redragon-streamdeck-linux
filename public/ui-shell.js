@@ -191,7 +191,68 @@ function togglePanel(id) {
 }
 
 function toggleHelpPanel() { togglePanel('help-panel'); }
-function toggleSettingsPanel() { togglePanel('settings-panel'); }
+
+function toggleSettingsPanel() {
+  togglePanel('settings-panel');
+  // Al abrir se refresca el estado: comprobar contra GitHub cada vez que se
+  // arranca la aplicación sería innecesario, pero al mirar los ajustes es
+  // justo cuando interesa saber si hay algo nuevo.
+  if (document.getElementById('settings-panel').classList.contains('open')) {
+    refrescarEstadoDeVersion();
+  }
+}
+
+// ── Versión instalada ───────────────────────────────────────────────────────
+
+function pintarEstado(texto, clase) {
+  const el = document.getElementById('update-status');
+  if (!el) return;
+  el.textContent = texto;
+  el.className = `about-status ${clase}`;
+}
+
+// Lee la versión que este binario declara. La graba build.rs a partir de la
+// etiqueta de git, así que avanza sola con cada release.
+async function cargarVersionInstalada() {
+  try {
+    const [version, commit] = await invoke('get_current_version');
+    const conPrefijo = `v${version}`;
+
+    const enBarra = document.getElementById('titlebar-version');
+    if (enBarra) enBarra.textContent = conPrefijo;
+
+    const enPanel = document.getElementById('app-version');
+    if (enPanel) enPanel.textContent = conPrefijo;
+
+    const elCommit = document.getElementById('app-commit');
+    if (elCommit) elCommit.textContent = commit || '—';
+  } catch (e) {
+    console.error('No se pudo leer la versión instalada:', e);
+  }
+}
+
+async function refrescarEstadoDeVersion() {
+  pintarEstado('Comprobando actualizaciones…', 'is-checking');
+  try {
+    const info = await invoke('check_for_updates');
+    if (info.available) {
+      pintarEstado(`Disponible ${info.latest_commit_short}`, 'is-outdated');
+    } else {
+      pintarEstado('Estás en la última versión', 'is-current');
+    }
+  } catch (e) {
+    // Sin conexión, o GitHub limitando peticiones: no es un fallo de la
+    // aplicación y no conviene presentarlo como tal.
+    pintarEstado('No se pudo comprobar', 'is-error');
+  }
+}
+
+// El botón de los ajustes: refresca la línea de estado y, si hay algo nuevo,
+// deja que la lógica de siempre muestre el diálogo con el detalle.
+async function buscarActualizaciones() {
+  await refrescarEstadoDeVersion();
+  checkForUpdates();
+}
 
 // ── Envoltorios sobre app-tauri.js ──────────────────────────────────────────
 // Se envuelve en vez de editar las funciones originales para que la lógica de
@@ -230,6 +291,12 @@ function toggleSettingsPanel() { togglePanel('settings-panel'); }
     return origClearPageButtons.apply(this, arguments);
   };
 })();
+
+// Este oyente se registra después del de app-tauri.js, que asigna `invoke`
+// antes de su primer `await`; para cuando corre esto, ya está disponible.
+document.addEventListener('DOMContentLoaded', () => {
+  cargarVersionInstalada();
+});
 
 // Cerrar diálogos y paneles con Escape.
 document.addEventListener('keydown', e => {
