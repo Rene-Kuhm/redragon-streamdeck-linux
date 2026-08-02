@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/daemon", "src-tauri"]
+
+# Compartir la resolucion de dependencias entre los tres crates evita que el
+# daemon y la GUI compilen versiones distintas de rusb o image.
+[workspace.package]
+edition = "2021"
