@@ -1488,6 +1488,51 @@ fn short_commit(commit: &str) -> String {
     commit[..7.min(commit.len())].to_string()
 }
 
+/// Convierte "v2.1.0" o "2.1.0-tauri" en [2, 1, 0] para poder comparar.
+///
+/// Se descarta la `v` inicial y todo lo que venga despues de `-`, que es
+/// donde suelen ir los sufijos de prelanzamiento. Devuelve `None` si no hay
+/// ningun numero, para no tratar una etiqueta rara como si fuera la version 0.
+fn parse_version(tag: &str) -> Option<Vec<u64>> {
+    let core = tag.trim().trim_start_matches(['v', 'V']);
+    let core = core.split(['-', '+']).next()?;
+
+    let parts: Vec<u64> = core
+        .split('.')
+        .map(|p| p.parse::<u64>())
+        .collect::<Result<_, _>>()
+        .ok()?;
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts)
+    }
+}
+
+/// `true` si `candidate` es posterior a `current`.
+///
+/// Las listas de distinta longitud se comparan rellenando con ceros, asi
+/// "2.1" y "2.1.0" resultan iguales en vez de que la mas corta pierda.
+fn is_newer(candidate: &str, current: &str) -> bool {
+    match (parse_version(candidate), parse_version(current)) {
+        (Some(a), Some(b)) => {
+            let len = a.len().max(b.len());
+            for i in 0..len {
+                let x = a.get(i).copied().unwrap_or(0);
+                let y = b.get(i).copied().unwrap_or(0);
+                if x != y {
+                    return x > y;
+                }
+            }
+            false
+        }
+        // Sin version comparable es preferible no avisar: un cartel de
+        // actualizacion que no se puede resolver es peor que no avisar.
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub available: bool,
@@ -1511,111 +1556,93 @@ pub struct CommitInfo {
 async fn check_for_updates() -> Result<UpdateInfo, String> {
     debug_log!("Checking for updates...");
 
-    // Get latest commits from GitHub API
-    let url = format!(
-        "https://api.github.com/repos/{}/commits?per_page=10",
-        GITHUB_REPO
-    );
-
     let client = reqwest::blocking::Client::builder()
         .user_agent("RedragonStreamDeck/2.0")
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let current_commit = CURRENT_COMMIT
+        .map(short_commit)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Se compara contra el ultimo *release*, no contra el ultimo commit de la
+    // rama principal. Comparar commits hacia que cualquier cambio de
+    // documentacion o de CI disparara el aviso de actualizacion.
+    let url = format!(
+        "https://api.github.com/repos/{}/releases/latest",
+        GITHUB_REPO
+    );
+
     let response = client
         .get(&url)
         .send()
         .map_err(|e| format!("Failed to fetch updates: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("GitHub API error: {}", response.status()));
-    }
-
-    let commits: Vec<serde_json::Value> = response
-        .json()
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    if commits.is_empty() {
-        let current_commit = CURRENT_COMMIT.unwrap_or("unknown");
+    // Un proyecto sin releases publicados no es un error: simplemente todavia
+    // no hay nada a lo que actualizarse.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        debug_log!("The repository has no published releases");
         return Ok(UpdateInfo {
             available: false,
             current_version: CURRENT_VERSION.to_string(),
-            current_commit: short_commit(current_commit),
-            latest_commit: current_commit.to_string(),
-            latest_commit_short: short_commit(current_commit),
+            current_commit,
+            latest_commit: String::new(),
+            latest_commit_short: String::new(),
             changes: vec![],
             update_date: String::new(),
         });
     }
 
-    let latest_commit = commits[0]["sha"].as_str().unwrap_or("").to_string();
-
-    let available = CURRENT_COMMIT
-        .map(|current_commit| latest_commit != current_commit)
-        .unwrap_or(false);
-
-    // Collect changes (commits since current version)
-    let mut changes: Vec<CommitInfo> = Vec::new();
-    for commit in &commits {
-        let sha = commit["sha"].as_str().unwrap_or("").to_string();
-        if Some(sha.as_str()) == CURRENT_COMMIT {
-            break; // Stop at current version
-        }
-
-        let message = commit["commit"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("")
-            .to_string();
-
-        let author = commit["commit"]["author"]["name"]
-            .as_str()
-            .unwrap_or("Unknown")
-            .to_string();
-
-        let date = commit["commit"]["author"]["date"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        // Format date nicely
-        let formatted_date = if date.len() >= 10 {
-            date[..10].to_string()
-        } else {
-            date.clone()
-        };
-
-        changes.push(CommitInfo {
-            sha: sha[..7.min(sha.len())].to_string(),
-            message,
-            author,
-            date: formatted_date,
-        });
+    if !response.status().is_success() {
+        return Err(format!("GitHub API error: {}", response.status()));
     }
 
-    let update_date = if !changes.is_empty() {
-        changes[0].date.clone()
+    let release: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let tag = release["tag_name"].as_str().unwrap_or("").to_string();
+    let published = release["published_at"].as_str().unwrap_or("");
+    let update_date = if published.len() >= 10 {
+        published[..10].to_string()
     } else {
-        String::new()
+        published.to_string()
     };
 
+    let available = is_newer(&tag, CURRENT_VERSION);
+
+    // Las notas del release son el registro de cambios. Se listan las lineas
+    // con contenido, quitando las viñetas para no duplicarlas en la interfaz.
+    let author = release["author"]["login"].as_str().unwrap_or("");
+    let changes: Vec<CommitInfo> = release["body"]
+        .as_str()
+        .unwrap_or("")
+        .lines()
+        .map(|line| line.trim().trim_start_matches(['-', '*', '•']).trim())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .take(20)
+        .map(|line| CommitInfo {
+            sha: tag.clone(),
+            message: line.to_string(),
+            author: author.to_string(),
+            date: update_date.clone(),
+        })
+        .collect();
+
     debug_log!(
-        "Update available: {}, changes: {}",
-        available,
-        changes.len()
+        "Latest release: {} (current {}), available: {}",
+        tag,
+        CURRENT_VERSION,
+        available
     );
 
     Ok(UpdateInfo {
         available,
         current_version: CURRENT_VERSION.to_string(),
-        current_commit: CURRENT_COMMIT
-            .map(short_commit)
-            .unwrap_or_else(|| "unknown".to_string()),
-        latest_commit: latest_commit.clone(),
-        latest_commit_short: short_commit(&latest_commit),
+        current_commit,
+        latest_commit: tag.clone(),
+        latest_commit_short: tag,
         changes,
         update_date,
     })
@@ -1625,74 +1652,83 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
 async fn install_update() -> Result<String, String> {
     debug_log!("Starting update installation...");
 
-    // Get the directory where the app is located
-    let exe_path =
+    // Se reinstala sobre el mismo ejecutable que esta corriendo. Antes esto
+    // copiaba a /usr/local/bin con sudo, que en un script sin terminal se
+    // queda esperando la contraseña, y ademas dejaba el binario en un sitio
+    // distinto del que arranca el servicio.
+    let install_path =
         std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
 
-    let app_dir = exe_path.parent().ok_or("Failed to get app directory")?;
-
-    // Create update script
     let update_script = format!(
         r#"#!/bin/bash
-set -e
+set -euo pipefail
 
-REPO_URL="https://github.com/{}.git"
+REPO_URL="https://github.com/{repo}.git"
+INSTALL_PATH="{install_path}"
+SERVICE="redragon-streamdeck.service"
+
 TEMP_DIR=$(mktemp -d)
-APP_DIR="{}"
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 echo "=== Actualizando Redragon Stream Deck ==="
 echo ""
 
-# Clone or pull the latest version
-echo "[1/4] Descargando última versión..."
-git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo" 2>/dev/null || {{
-    echo "Error al clonar repositorio"
-    rm -rf "$TEMP_DIR"
-    exit 1
-}}
+echo "[1/5] Descargando ultima version..."
+git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo"
 
 cd "$TEMP_DIR/repo"
 
-# Build the application
-echo "[2/4] Compilando aplicación..."
-if ! cargo build --release --manifest-path src-tauri/Cargo.toml 2>/dev/null; then
-    echo "Error al compilar"
-    rm -rf "$TEMP_DIR"
+echo "[2/5] Compilando..."
+cargo build --release -p redragon-streamdeck
+
+# El proyecto es un workspace: cargo deja el binario en el target de la raiz,
+# no en src-tauri/target, aunque se compile apuntando a ese paquete.
+NEW_BIN="$TEMP_DIR/repo/target/release/redragon-streamdeck"
+if [ ! -x "$NEW_BIN" ]; then
+    echo "Error: no se genero el binario en $NEW_BIN"
     exit 1
 fi
 
-# Stop running instances
-echo "[3/4] Deteniendo instancias anteriores..."
-pkill -f redragon-streamdeck 2>/dev/null || true
+echo "[3/5] Deteniendo la aplicacion..."
+MANAGED=0
+if systemctl --user is-active --quiet "$SERVICE" || systemctl --user is-enabled --quiet "$SERVICE" 2>/dev/null; then
+    MANAGED=1
+    systemctl --user stop "$SERVICE" || true
+else
+    # -x compara contra el nombre del proceso, que systemd trunca a 15
+    # caracteres. Con -f el patron aparece en la propia linea de comandos de
+    # este script y se mataria a si mismo.
+    pkill -x redragon-stream || true
+fi
 sleep 1
 
-# Install the new binary
-echo "[4/4] Instalando actualización..."
-sudo cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" /usr/local/bin/ 2>/dev/null || \
-    cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" "$APP_DIR/" 2>/dev/null || {{
-    echo "No se pudo instalar. Copiando a directorio temporal..."
-    cp "$TEMP_DIR/repo/src-tauri/target/release/redragon-streamdeck" "/tmp/redragon-streamdeck-new"
-    echo "El nuevo binario está en: /tmp/redragon-streamdeck-new"
-    echo "Ejecútalo manualmente o cópialo a /usr/local/bin/"
-}}
+echo "[4/5] Instalando en $INSTALL_PATH..."
+cp -f "$INSTALL_PATH" "$INSTALL_PATH.bak" 2>/dev/null || true
+install -m 755 "$NEW_BIN" "$INSTALL_PATH"
 
-# Cleanup
-rm -rf "$TEMP_DIR"
+echo "[5/5] Arrancando..."
+if [ "$MANAGED" = 1 ]; then
+    # El unit trae StartLimitBurst para cortar bucles de fallos; sin este
+    # reset, arrancar tras varios reinicios seguidos falla con start-limit-hit
+    # y deja el dispositivo sin responder.
+    systemctl --user reset-failed "$SERVICE" || true
+    systemctl --user start "$SERVICE"
+else
+    nohup "$INSTALL_PATH" >/dev/null 2>&1 &
+fi
 
 echo ""
-echo "=== Actualización completada ==="
-echo "Reinicia la aplicación para aplicar los cambios."
+echo "=== Actualizacion completada ==="
+echo "Copia de seguridad de la version anterior: $INSTALL_PATH.bak"
 "#,
-        GITHUB_REPO,
-        app_dir.display()
+        repo = GITHUB_REPO,
+        install_path = install_path.display()
     );
 
-    // Save script to temp file
     let script_path = std::env::temp_dir().join("redragon-update.sh");
     fs::write(&script_path, &update_script)
         .map_err(|e| format!("Failed to write update script: {}", e))?;
 
-    // Make it executable
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1700,47 +1736,46 @@ echo "Reinicia la aplicación para aplicar los cambios."
             .map_err(|e| format!("Failed to set script permissions: {}", e))?;
     }
 
-    // Run the update script in a terminal
+    // Conviene abrirlo en una terminal: compilar tarda y sin salida visible
+    // parece que la actualizacion se colgo.
     let terminals = [
-        "foot",
         "kitty",
+        "konsole",
+        "foot",
         "alacritty",
         "gnome-terminal",
-        "konsole",
         "xterm",
     ];
-    let mut success = false;
+    let script = script_path.to_string_lossy().to_string();
+    let mut launched = false;
 
     for terminal in &terminals {
         let result = if *terminal == "gnome-terminal" || *terminal == "konsole" {
             Command::new(terminal)
-                .args(["--", "bash", script_path.to_str().unwrap()])
+                .args(["--", "bash", &script])
                 .spawn()
         } else {
-            Command::new(terminal)
-                .args(["-e", "bash", script_path.to_str().unwrap()])
-                .spawn()
+            Command::new(terminal).args(["-e", "bash", &script]).spawn()
         };
 
         if result.is_ok() {
-            success = true;
+            launched = true;
             debug_log!("Update started in {}", terminal);
             break;
         }
     }
 
-    if !success {
-        // Fallback: run in background and notify
+    if !launched {
         Command::new("bash")
             .arg(&script_path)
             .spawn()
             .map_err(|e| format!("Failed to start update: {}", e))?;
     }
 
-    Ok(
-        "Actualización iniciada. La aplicación se cerrará para completar la instalación."
-            .to_string(),
-    )
+    Ok(format!(
+        "Actualizacion iniciada. El binario se reemplazara en {}",
+        install_path.display()
+    ))
 }
 
 #[tauri::command]
@@ -1930,3 +1965,52 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tags_with_and_without_prefix() {
+        assert_eq!(parse_version("v2.1.0"), Some(vec![2, 1, 0]));
+        assert_eq!(parse_version("2.1.0"), Some(vec![2, 1, 0]));
+        // El repositorio ya tiene etiquetas con sufijo, como v2.0.0-tauri.
+        assert_eq!(parse_version("v2.0.0-tauri"), Some(vec![2, 0, 0]));
+        assert_eq!(parse_version("v2.0"), Some(vec![2, 0]));
+    }
+
+    #[test]
+    fn rejects_tags_without_a_version() {
+        assert_eq!(parse_version("latest"), None);
+        assert_eq!(parse_version(""), None);
+    }
+
+    #[test]
+    fn detects_newer_releases() {
+        assert!(is_newer("v2.1.0", "2.0.0"));
+        assert!(is_newer("v2.0.1", "2.0.0"));
+        assert!(is_newer("v3.0.0", "2.9.9"));
+    }
+
+    #[test]
+    fn ignores_equal_or_older_releases() {
+        // El caso que importa: recien compilado desde la ultima version
+        // publicada, no debe aparecer ningun aviso.
+        assert!(!is_newer("v2.0.0", "2.0.0"));
+        assert!(!is_newer("v2.0.0-tauri", "2.0.0"));
+        assert!(!is_newer("v1.9.0", "2.0.0"));
+    }
+
+    #[test]
+    fn treats_missing_components_as_zero() {
+        assert!(!is_newer("v2.0", "2.0.0"));
+        assert!(is_newer("v2.0.1", "2.0"));
+    }
+
+    #[test]
+    fn stays_quiet_when_the_tag_is_not_a_version() {
+        // Preferible callar antes que anunciar una actualizacion que el
+        // usuario no puede resolver.
+        assert!(!is_newer("nightly", "2.0.0"));
+    }
+}
