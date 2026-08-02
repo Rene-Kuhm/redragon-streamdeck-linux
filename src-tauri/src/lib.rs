@@ -2181,7 +2181,7 @@ fn get_twitch_followers_text() -> String {
 // Read a key press from the device
 // Returns (key_id, state) where state=1 means pressed, state=0 means released
 fn read_key_press(handle: &DeviceHandle<Context>) -> Result<(u8, u8), String> {
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; PACKET_SIZE];
 
     // Read from endpoint 0x82 (IN endpoint)
     match handle.read_interrupt(0x82, &mut buf, Duration::from_millis(100)) {
@@ -2196,6 +2196,9 @@ fn read_key_press(handle: &DeviceHandle<Context>) -> Result<(u8, u8), String> {
             }
         }
         Err(rusb::Error::Timeout) => Err("timeout".to_string()),
+        // Recoverable: the packet is gone but the connection is fine. Reported
+        // separately so the listener does not treat it as a dead device.
+        Err(rusb::Error::Overflow) => Err("overflow".to_string()),
         Err(e) => Err(format!("USB read error: {}", e)),
     }
 }
@@ -2522,7 +2525,10 @@ fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
                         }
                     }
                     Err(e) => {
-                        if e != "timeout" {
+                        // Only a genuinely broken connection warrants reconnecting:
+                        // rebuilding it costs a full 15-image page reload, during
+                        // which every press is dropped.
+                        if e != "timeout" && e != "overflow" {
                             debug_log!("Button listener error: {}", e);
                             break; // Reconnect
                         }
