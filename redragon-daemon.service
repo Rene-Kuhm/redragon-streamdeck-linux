@@ -1,0 +1,17 @@
+[Unit]
+Description=Redragon Stream Deck (daemon sin interfaz)
+Documentation=https://github.com/Rene-Kuhm/redragon-streamdeck-linux-
+# Alternativa a redragon-streamdeck.service: el mismo dispositivo no puede
+# estar tomado por los dos a la vez, asi que se usa uno u otro.
+Conflicts=redragon-streamdeck.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/redragon-daemon
+Restart=on-failure
+RestartSec=5
+
+# A diferencia de la GUI, no necesita sesion grafica: puede arrancar apenas
+# inicia la sesion de usuario, sin esperar a Wayland ni X11.
+[Install]
+WantedBy=default.target
