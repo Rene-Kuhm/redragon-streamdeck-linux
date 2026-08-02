@@ -1,469 +1,394 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Instalador de Redragon Stream Deck.
+#
+# Reemplaza a install-linux.sh, install-fedora.sh, install-ubuntu.sh y a las
+# instrucciones sueltas de INSTALL_ARCH.md. Cuatro scripts paralelos divergen
+# por construccion, y ya habian divergido: install-fedora.sh convivio con
+# codigo que solo compilaba en Arch. Agregar una distro ahora es agregar una
+# fila en packages_for(), no un archivo mas.
 
-# =============================================================================
-# Redragon Stream Deck Manager - Instalador para Arch Linux / CachyOS
-# =============================================================================
+set -euo pipefail
 
-set -e
+readonly BIN_NAME="redragon-streamdeck"
+readonly DAEMON_NAME="redragon-daemon"
+readonly INSTALL_DIR="/usr/local/bin"
+readonly UDEV_RULE="/etc/udev/rules.d/60-redragon-streamdeck.rules"
+readonly USB_VENDOR="0200"
+readonly USB_PRODUCT="1000"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+DISTRO_FAMILY=""
+PKG_INSTALL=""
+SKIP_DEPS=0
+BUILD_ONLY=0
+NO_AUTOSTART=0
+DAEMON_ONLY=0
 
-RUN_DEPS=true
-RUN_SYSTEM_SETUP=true
-RUN_BUILD=true
-RUN_INSTALL=true
-RUN_AUTOSTART=true
-SKIP_BUILD_IF_EXISTS=false
-AUTOSTART_ACTION="ask"
+# ---------------------------------------------------------------- presentacion
 
-print_header() {
-    echo -e "${BLUE}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║   Redragon Stream Deck Manager - Instalador Arch/CachyOS     ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-}
+if [ -t 1 ]; then
+    C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_BLUE=$'\033[34m'
+else
+    C_RESET=""; C_BOLD=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""
+fi
 
-print_step() {
-    echo -e "${GREEN}[+]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[✗]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
+step() { printf '%s==>%s %s\n' "$C_BLUE$C_BOLD" "$C_RESET" "$*"; }
+ok()   { printf '%s  ok%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
+warn() { printf '%s  !!%s %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
+fail() { printf '%serror%s %s\n' "$C_RED$C_BOLD" "$C_RESET" "$*" >&2; exit 1; }
 
 show_help() {
-    cat << 'EOF'
-Uso: ./install.sh [opciones]
+    cat <<EOF
+Instalador de Redragon Stream Deck
+
+  ./install.sh [opciones]
 
 Opciones:
-  --deps-only          Instala dependencias y configura permisos del sistema
-  --build-only         Solo compila la aplicación
-  --install-only       Solo instala el binario ya compilado y la entrada desktop
-  --no-build           No compila; reutiliza el binario existente
-  --skip-build-if-exists
-                       No recompila si ya existe src-tauri/target/release/redragon-streamdeck
-  --no-autostart       No pregunta por auto-inicio
-  --enable-autostart   Habilita auto-inicio con systemd de usuario sin preguntar
-  --disable-autostart  Deshabilita auto-inicio con systemd de usuario y termina
-  --autostart-status   Muestra estado del servicio de auto-inicio y termina
-  -h, --help           Muestra esta ayuda
+  --build-only     Solo compila; no instala nada ni toca el sistema.
+  --skip-deps      No instala dependencias del sistema (ya las tenes).
+  --no-autostart   No configura el arranque automatico con systemd.
+  --daemon-only    Instala solo el daemon sin interfaz y sin sus dependencias
+                   graficas. Para equipos sin entorno de escritorio.
+  -h, --help       Esta ayuda.
 
-Notas:
-  - Los pasos de sistema usan sudo: pacman, systemctl, usermod, udevadm y /usr/local/bin.
-  - Si sudo no puede pedir contraseña, el instalador falla temprano con un mensaje claro.
+Distros soportadas: Fedora/RHEL, Debian/Ubuntu, Arch y openSUSE,
+mas sus derivados via ID_LIKE de /etc/os-release.
 EOF
 }
 
 parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
-            --deps-only)
-                RUN_DEPS=true
-                RUN_SYSTEM_SETUP=true
-                RUN_BUILD=false
-                RUN_INSTALL=false
-                RUN_AUTOSTART=false
-                ;;
-            --build-only)
-                RUN_DEPS=false
-                RUN_SYSTEM_SETUP=false
-                RUN_BUILD=true
-                RUN_INSTALL=false
-                RUN_AUTOSTART=false
-                ;;
-            --install-only)
-                RUN_DEPS=false
-                RUN_SYSTEM_SETUP=false
-                RUN_BUILD=false
-                RUN_INSTALL=true
-                RUN_AUTOSTART=false
-                ;;
-            --no-build)
-                RUN_BUILD=false
-                ;;
-            --skip-build-if-exists)
-                SKIP_BUILD_IF_EXISTS=true
-                ;;
-            --no-autostart)
-                RUN_AUTOSTART=false
-                ;;
-            --enable-autostart)
-                RUN_AUTOSTART=true
-                AUTOSTART_ACTION="enable"
-                ;;
-            --disable-autostart)
-                RUN_DEPS=false
-                RUN_SYSTEM_SETUP=false
-                RUN_BUILD=false
-                RUN_INSTALL=false
-                RUN_AUTOSTART=true
-                AUTOSTART_ACTION="disable"
-                ;;
-            --autostart-status)
-                RUN_DEPS=false
-                RUN_SYSTEM_SETUP=false
-                RUN_BUILD=false
-                RUN_INSTALL=false
-                RUN_AUTOSTART=true
-                AUTOSTART_ACTION="status"
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                print_error "Opción desconocida: $1"
-                show_help
-                exit 1
-                ;;
+            --build-only)   BUILD_ONLY=1 ;;
+            --skip-deps)    SKIP_DEPS=1 ;;
+            --no-autostart) NO_AUTOSTART=1 ;;
+            --daemon-only)  DAEMON_ONLY=1 ;;
+            -h|--help)      show_help; exit 0 ;;
+            *)              fail "opcion desconocida: $1 (usa --help)" ;;
         esac
         shift
     done
 }
 
-ensure_sudo() {
-    if ! command -v sudo &>/dev/null; then
-        print_error "sudo no está instalado o no está disponible en PATH"
-        exit 1
-    fi
+# -------------------------------------------------------------------- deteccion
 
-    if sudo -n true 2>/dev/null; then
-        return 0
-    fi
+detect_distro() {
+    [ -r /etc/os-release ] || fail "no existe /etc/os-release; distro no reconocible"
+    # shellcheck disable=SC1091
+    . /etc/os-release
 
-    if [ -t 0 ]; then
-        print_step "Solicitando permisos sudo una sola vez..."
-        sudo -v
-        return 0
-    fi
-
-    print_error "Este paso necesita sudo, pero no hay una terminal interactiva para pedir contraseña"
-    print_warning "Ejecuta el instalador desde tu terminal o corre primero: sudo -v"
-    exit 1
-}
-
-preflight_sudo() {
-    if [ "$RUN_DEPS" = true ] || [ "$RUN_SYSTEM_SETUP" = true ] || [ "$RUN_INSTALL" = true ]; then
-        ensure_sudo
-    fi
-}
-
-user_has_input_group() {
-    groups | grep -qw input && return 0
-
-    if command -v getent &>/dev/null; then
-        getent group input | grep -qw "$USER" && return 0
-    fi
-
-    return 1
-}
-
-# Verificar que estamos en Arch Linux o derivados
-check_arch() {
-    # Detectar Arch y derivados (CachyOS, Manjaro, EndeavourOS, etc.)
-    if [ -f /etc/arch-release ]; then
-        if [ -f /etc/os-release ] && grep -qi "cachyos" /etc/os-release; then
-            print_success "Detectado: CachyOS"
-        else
-            print_success "Detectado: Arch Linux"
-        fi
-    elif [ -f /etc/os-release ] && grep -qi "arch\|cachyos\|manjaro\|endeavour\|garuda\|artix" /etc/os-release; then
-        DISTRO_NAME=$(grep "^NAME=" /etc/os-release | cut -d'"' -f2)
-        print_success "Detectado: $DISTRO_NAME (basado en Arch)"
-    elif command -v pacman &>/dev/null; then
-        print_success "Detectado: Sistema con pacman (asumiendo compatible con Arch)"
-    else
-        print_error "Este instalador es para Arch Linux y derivados (CachyOS, Manjaro, etc.)"
-        print_warning "Para Debian/Ubuntu usa: ./install-ubuntu.sh"
-        print_warning "Para Fedora usa: ./install-fedora.sh"
-        exit 1
-    fi
-}
-
-# Instalar dependencias
-install_dependencies() {
-    print_step "Instalando dependencias del sistema..."
-
-    DEPS="webkit2gtk-4.1 gtk3 libusb openssl glib2 base-devel git curl xdg-utils desktop-file-utils ydotool playerctl wireplumber"
-
-    # Verificar cuáles ya están instaladas
-    MISSING=""
-    for pkg in $DEPS; do
-        if ! pacman -Qi "$pkg" &>/dev/null; then
-            MISSING="$MISSING $pkg"
-        fi
+    # ID_LIKE hace que los derivados (Mint, Pop!_OS, EndeavourOS, Nobara,
+    # CachyOS...) funcionen sin listarlos uno por uno.
+    local id
+    for id in ${ID:-} ${ID_LIKE:-}; do
+        case "$id" in
+            fedora|rhel|centos)  DISTRO_FAMILY="fedora" ;;
+            debian|ubuntu)       DISTRO_FAMILY="debian" ;;
+            arch|archlinux)      DISTRO_FAMILY="arch" ;;
+            opensuse*|suse|sles) DISTRO_FAMILY="suse" ;;
+            *)                   continue ;;
+        esac
+        break
     done
 
-    if [ -n "$MISSING" ]; then
-        ensure_sudo
-        echo -e "  Instalando:$MISSING"
-        sudo pacman -S --needed --noconfirm $MISSING
+    [ -n "$DISTRO_FAMILY" ] || fail \
+"distro no soportada: ${PRETTY_NAME:-${ID:-desconocida}}.
+       Instala las dependencias a mano y volve a correr con --skip-deps."
+
+    case "$DISTRO_FAMILY" in
+        fedora) PKG_INSTALL="dnf install -y" ;;
+        debian) PKG_INSTALL="apt-get install -y --no-install-recommends" ;;
+        arch)   PKG_INSTALL="pacman -S --needed --noconfirm" ;;
+        suse)   PKG_INSTALL="zypper install -y" ;;
+    esac
+
+    ok "Detectado ${PRETTY_NAME:-$ID} (familia: $DISTRO_FAMILY)"
+}
+
+# La tabla. Una distro nueva es una entrada mas aca y nada mas.
+packages_for() {
+    case "$1" in
+        fedora)
+            echo "gcc gcc-c++ make pkgconf-pkg-config git curl
+                  webkit2gtk4.1-devel gtk3-devel libusb1-devel openssl-devel
+                  librsvg2-devel libappindicator-gtk3-devel
+                  dejavu-sans-fonts ydotool playerctl"
+            ;;
+        debian)
+            echo "build-essential pkg-config git curl ca-certificates
+                  libwebkit2gtk-4.1-dev libgtk-3-dev libusb-1.0-0-dev libssl-dev
+                  librsvg2-dev libayatana-appindicator3-dev
+                  fonts-dejavu-core ydotool playerctl"
+            ;;
+        arch)
+            echo "base-devel pkgconf git curl
+                  webkit2gtk-4.1 gtk3 libusb openssl
+                  librsvg libayatana-appindicator
+                  ttf-dejavu ydotool playerctl"
+            ;;
+        suse)
+            # Sin cobertura en CI: los nombres de openSUSE cambian entre Leap y
+            # Tumbleweed. Si alguno falla, --skip-deps e instalar a mano.
+            echo "gcc gcc-c++ make pkg-config git curl
+                  webkit2gtk3-devel gtk3-devel libusb-1_0-devel libopenssl-devel
+                  librsvg-devel libayatana-appindicator3-devel
+                  dejavu-fonts ydotool playerctl"
+            ;;
+    esac
+}
+
+# ------------------------------------------------------------------------ sudo
+
+need_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
     else
-        print_success "Todas las dependencias ya están instaladas"
+        command -v sudo >/dev/null || fail "hace falta sudo (o correr como root)"
+        sudo "$@"
     fi
 }
 
-# Configurar ydotool
-setup_ydotool() {
-    print_step "Configurando ydotool para hotkeys..."
+# ------------------------------------------------------------------------ pasos
 
-    # Crear/actualizar servicio con socket accesible para usuarios del grupo input
-    SERVICE_FILE="/etc/systemd/system/ydotoold.service"
-    print_warning "Configurando servicio ydotoold.service..."
-    ensure_sudo
-    sudo tee "$SERVICE_FILE" > /dev/null << 'YDOTOOL_EOF'
+install_dependencies() {
+    if [ "$SKIP_DEPS" -eq 1 ]; then
+        warn "--skip-deps: no se instalan dependencias del sistema"
+        return
+    fi
+
+    step "Instalando dependencias del sistema"
+
+    local packages
+    packages=$(packages_for "$DISTRO_FAMILY" | tr -s '[:space:]' ' ')
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        # El daemon no enlaza webkit ni gtk; instalarlos seria traer media
+        # pila grafica a un equipo que quiza ni tenga escritorio.
+        packages=$(printf '%s' "$packages" | tr ' ' '\n' \
+            | grep -vE 'webkit|gtk|appindicator|librsvg' | tr '\n' ' ')
+        warn "--daemon-only: se omiten las dependencias graficas"
+    fi
+
+    [ "$DISTRO_FAMILY" = "debian" ] && need_root apt-get update
+
+    # shellcheck disable=SC2086
+    need_root $PKG_INSTALL $packages
+
+    ok "Dependencias instaladas"
+}
+
+setup_udev() {
+    step "Instalando la regla udev del dispositivo"
+
+    # TAG+="uaccess" le da acceso al usuario de la sesion local activa, que es
+    # exactamente lo que hace falta. No se usa MODE="0666": eso dejaria el
+    # dispositivo escribible por cualquier usuario del sistema sin ganar nada.
+    #
+    # El prefijo es 60- para que corra ANTES de 73-seat-late.rules, que es quien
+    # aplica uaccess. Una regla 99- se evalua despues y el tag queda sin efecto.
+    local rule
+    rule="SUBSYSTEM==\"usb\", ATTR{idVendor}==\"$USB_VENDOR\", ATTR{idProduct}==\"$USB_PRODUCT\", TAG+=\"uaccess\""
+
+    if [ -f "$UDEV_RULE" ] && [ "$(cat "$UDEV_RULE")" = "$rule" ]; then
+        ok "La regla udev ya estaba puesta"
+    else
+        printf '%s\n' "$rule" | need_root tee "$UDEV_RULE" >/dev/null
+        need_root udevadm control --reload-rules
+        need_root udevadm trigger
+        ok "Regla udev instalada en $UDEV_RULE"
+        warn "Desconecta y volve a conectar el Stream Deck para que tome efecto"
+    fi
+
+    # Reglas de versiones anteriores que dejaban el dispositivo world-writable.
+    local legacy
+    for legacy in /etc/udev/rules.d/99-redragon-streamdeck.rules \
+                  /etc/udev/rules.d/99-redragon.rules; do
+        if [ -f "$legacy" ]; then
+            need_root rm -f "$legacy"
+            warn "Eliminada regla anterior con MODE=0666: $legacy"
+        fi
+    done
+}
+
+setup_ydotool() {
+    step "Configurando ydotool (necesario para las acciones de teclado)"
+
+    if ! command -v ydotoold >/dev/null; then
+        warn "ydotoold no esta instalado; las acciones de teclado no van a andar"
+        return
+    fi
+
+    # El socket va en /run y no en /tmp: /tmp es escribible por todos y varias
+    # distros lo limpian solas. La app respeta YDOTOOL_SOCKET del entorno.
+    local socket="/run/ydotoold/socket"
+
+    need_root tee /etc/systemd/system/ydotoold.service >/dev/null <<EOF
 [Unit]
 Description=ydotoold - ydotool daemon
 After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ydotoold --socket-path=/tmp/.ydotool_socket --socket-perm=0660
-ExecStartPost=/bin/sh -c 'for i in 1 2 3 4 5; do [ -S /tmp/.ydotool_socket ] && chgrp input /tmp/.ydotool_socket && chmod 0660 /tmp/.ydotool_socket && exit 0; sleep 0.2; done; exit 1'
+RuntimeDirectory=ydotoold
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/ydotoold --socket-path=$socket --socket-perm=0660
+ExecStartPost=/bin/sh -c 'for i in \$(seq 1 25); do [ -S $socket ] && chgrp input $socket && exit 0; sleep 0.2; done; exit 1'
 Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-YDOTOOL_EOF
-    sudo systemctl daemon-reload
+EOF
 
-    # Habilitar servicio
-    if ! systemctl is-enabled ydotoold.service &>/dev/null; then
-        ensure_sudo
-        sudo systemctl enable ydotoold.service
+    need_root systemctl daemon-reload
+    need_root systemctl enable ydotoold.service
+    need_root systemctl restart ydotoold.service
+
+    # La app lee YDOTOOL_SOCKET del entorno; sin esto buscaria en las rutas por
+    # defecto y no encontraria este socket.
+    mkdir -p "$HOME/.config/environment.d"
+    printf 'YDOTOOL_SOCKET=%s\n' "$socket" \
+        > "$HOME/.config/environment.d/60-redragon-ydotool.conf"
+
+    if ! id -nG "$USER" | grep -qw input; then
+        need_root usermod -aG input "$USER"
+        warn "Te agregue al grupo 'input': cerra sesion y volve a entrar"
     fi
 
-    if ! systemctl is-active ydotoold.service &>/dev/null; then
-        ensure_sudo
-        sudo systemctl start ydotoold.service
-    else
-        sudo systemctl restart ydotoold.service
-    fi
-
-    # Agregar usuario al grupo input
-    if ! user_has_input_group; then
-        print_warning "Agregando usuario al grupo 'input'..."
-        ensure_sudo
-        sudo usermod -aG input "$USER"
-        print_warning "Necesitarás cerrar sesión y volver a iniciar para que los hotkeys funcionen"
-    elif ! groups | grep -qw input; then
-        print_warning "Tu usuario ya está agregado al grupo 'input', pero esta sesión aún no lo ve"
-        print_warning "Cierra sesión y vuelve a iniciar para que los hotkeys funcionen"
-    fi
-
-    print_success "ydotool configurado"
+    ok "ydotool configurado (socket en $socket)"
 }
 
-# Configurar reglas udev
-setup_udev() {
-    print_step "Configurando reglas udev para el dispositivo USB..."
-
-    RULES_FILE="/etc/udev/rules.d/99-redragon-streamdeck.rules"
-    RULES_CONTENT='SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", MODE="0666", TAG+="uaccess"'
-
-    if [ ! -f "$RULES_FILE" ]; then
-        ensure_sudo
-        echo "$RULES_CONTENT" | sudo tee "$RULES_FILE" > /dev/null
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
-        print_success "Reglas udev instaladas"
-        print_warning "Desconecta y reconecta el Stream Deck"
-    else
-        print_success "Reglas udev ya existen"
-    fi
-}
-
-# Verificar/instalar Rust
 check_rust() {
-    print_step "Verificando Rust..."
-
-    if ! command -v cargo &>/dev/null; then
-        print_warning "Rust no está instalado. Instalando..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
+    if command -v cargo >/dev/null; then
+        ok "Rust presente: $(cargo --version)"
+        return
     fi
 
-    print_success "Rust $(cargo --version | cut -d' ' -f2) disponible"
+    step "Instalando Rust"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --default-toolchain stable --profile minimal
+    # shellcheck disable=SC1091
+    . "$HOME/.cargo/env"
+    ok "Rust instalado"
 }
 
-# Compilar la aplicación
 build_app() {
-    if [ "$SKIP_BUILD_IF_EXISTS" = true ] && [ -f "src-tauri/target/release/redragon-streamdeck" ]; then
-        print_success "Binario existente encontrado; omitiendo compilación"
-        return 0
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        step "Compilando el daemon"
+        ( cd "$SCRIPT_DIR" && cargo build --release -p redragon-daemon )
+        ok "Compilado"
+        return
     fi
 
-    print_step "Compilando la aplicación (esto puede tardar unos minutos)..."
-
-    cargo build --release --manifest-path src-tauri/Cargo.toml
-
-    if [ -f "src-tauri/target/release/redragon-streamdeck" ]; then
-        print_success "Compilación exitosa"
-    else
-        print_error "Error en la compilación"
-        exit 1
-    fi
+    step "Compilando (tarda unos minutos)"
+    ( cd "$SCRIPT_DIR" && cargo build --release --workspace )
+    ok "Compilado"
 }
 
-# Instalar la aplicación
 install_app() {
-    print_step "Instalando la aplicación..."
+    local target="$SCRIPT_DIR/target/release"
 
-    if [ ! -f "src-tauri/target/release/redragon-streamdeck" ]; then
-        print_error "No existe src-tauri/target/release/redragon-streamdeck"
-        print_warning "Ejecuta primero: ./install.sh --build-only"
-        exit 1
+    step "Instalando"
+
+    # El daemon se instala siempre: es lo que maneja el dispositivo y funciona
+    # igual en un equipo sin entorno grafico.
+    [ -f "$target/$DAEMON_NAME" ] || fail "no existe $target/$DAEMON_NAME; corre el script sin --build-only"
+    need_root install -Dm755 "$target/$DAEMON_NAME" "$INSTALL_DIR/$DAEMON_NAME"
+    ok "Daemon instalado en $INSTALL_DIR/$DAEMON_NAME"
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        return
     fi
 
-    # Copiar binario
-    ensure_sudo
-    sudo cp src-tauri/target/release/redragon-streamdeck /usr/local/bin/
-    sudo chmod +x /usr/local/bin/redragon-streamdeck
+    local built="$target/$BIN_NAME"
+    [ -f "$built" ] || fail "no existe $built; corre el script sin --build-only"
+    need_root install -Dm755 "$built" "$INSTALL_DIR/$BIN_NAME"
 
-    # Crear directorio de datos
-    mkdir -p ~/.local/share/redragon-streamdeck
-
-    # Crear entrada de escritorio
-    mkdir -p ~/.local/share/applications
-    cat > ~/.local/share/applications/redragon-streamdeck.desktop << 'EOF'
+    mkdir -p "$HOME/.local/share/applications"
+    cat > "$HOME/.local/share/applications/$BIN_NAME.desktop" <<EOF
 [Desktop Entry]
 Name=Redragon Stream Deck
 Comment=Control your Redragon SS-550 Stream Deck
-Exec=redragon-streamdeck
+Exec=$BIN_NAME
 Icon=input-gaming
 Terminal=false
 Type=Application
 Categories=Utility;AudioVideo;
 Keywords=stream;deck;obs;twitch;
 EOF
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
-    # Actualizar base de datos de aplicaciones
-    update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
-
-    print_success "Aplicación instalada en /usr/local/bin/redragon-streamdeck"
-}
-
-# Configuración opcional de auto-inicio
-install_autostart_service() {
-    mkdir -p ~/.config/systemd/user
-    cp "$SCRIPT_DIR/redragon-streamdeck.service" ~/.config/systemd/user/redragon-streamdeck.service
-    systemctl --user daemon-reload
+    ok "Instalado en $INSTALL_DIR/$BIN_NAME"
 }
 
 setup_autostart() {
-    case "$AUTOSTART_ACTION" in
-        enable)
-            print_step "Configurando auto-inicio..."
-            install_autostart_service
-            systemctl --user enable redragon-streamdeck.service
-            print_success "Auto-inicio configurado"
-            print_warning "El servicio iniciará en el próximo login"
-            return
-            ;;
-        disable)
-            print_step "Deshabilitando auto-inicio..."
-            systemctl --user disable --now redragon-streamdeck.service 2>/dev/null || true
-            rm -f ~/.config/systemd/user/redragon-streamdeck.service
-            systemctl --user daemon-reload
-            print_success "Auto-inicio deshabilitado"
-            return
-            ;;
-        status)
-            if systemctl --user list-unit-files redragon-streamdeck.service --no-pager --no-legend | grep -q redragon-streamdeck.service; then
-                systemctl --user status redragon-streamdeck.service --no-pager || true
-            else
-                print_warning "Auto-inicio no configurado"
-            fi
-            return
-            ;;
-    esac
-
-    echo ""
-    read -p "¿Deseas que la aplicación inicie automáticamente? [y/N] " -n 1 -r
-    echo
-
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        AUTOSTART_ACTION="enable"
-        setup_autostart
+    if [ "$NO_AUTOSTART" -eq 1 ]; then
+        warn "--no-autostart: no se configura el arranque automatico"
+        return
     fi
+
+    step "Configurando arranque automatico"
+    mkdir -p "$HOME/.config/systemd/user"
+
+    # Los dos units se instalan, pero solo se habilita uno: el dispositivo no
+    # puede estar tomado por la GUI y el daemon a la vez (Conflicts= lo declara).
+    install -Dm644 "$SCRIPT_DIR/$DAEMON_NAME.service" \
+        "$HOME/.config/systemd/user/$DAEMON_NAME.service"
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        systemctl --user daemon-reload
+        systemctl --user enable "$DAEMON_NAME.service"
+        ok "El daemon arranca solo al iniciar sesion"
+        return
+    fi
+
+    install -Dm644 "$SCRIPT_DIR/$BIN_NAME.service" \
+        "$HOME/.config/systemd/user/$BIN_NAME.service"
+    systemctl --user daemon-reload
+    systemctl --user enable "$BIN_NAME.service"
+    ok "Arranca solo al iniciar sesion"
 }
 
-# Mostrar resumen final
 show_summary() {
-    echo ""
-    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              ¡Proceso Completado!                            ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo "Para ejecutar la aplicación:"
-    echo -e "  ${BLUE}redragon-streamdeck${NC}"
-    echo ""
-    echo "O búscala en el menú de aplicaciones como 'Redragon Stream Deck'"
-    echo ""
-    echo "Comandos especiales disponibles:"
-    echo "  - Widgets: __CLOCK__, __CPU__, __RAM__, __TEMP__"
-    echo "  - OBS: __OBS_STREAM__, __OBS_RECORD__, __OBS_SCENE_nombre"
-    echo "  - Twitch: __TWITCH_VIEWERS__, __TWITCH_CLIP__"
-    echo ""
-    echo "Para más información, consulta:"
-    echo "  - CLAUDE.md (lista completa de comandos)"
-    echo "  - INSTALL_ARCH.md (configuración de OBS/Twitch)"
-    echo ""
+    printf '\n%sRedragon Stream Deck listo.%s\n\n' "$C_GREEN$C_BOLD" "$C_RESET"
+    cat <<EOF
+  Ejecutar:     $BIN_NAME
+  Iniciar:      systemctl --user start $BIN_NAME
+  Ver logs:     journalctl --user -u $BIN_NAME -f
+  Diagnostico:  REDRAGON_STREAMDECK_DEBUG=1 $BIN_NAME
 
-    if ! groups | grep -qw input; then
-        echo -e "${YELLOW}⚠ IMPORTANTE: Cierra sesión y vuelve a iniciar para que los hotkeys funcionen${NC}"
-        echo ""
-    fi
+  Sin interfaz: systemctl --user disable --now $BIN_NAME
+                systemctl --user enable --now $DAEMON_NAME
+
+  Si es la primera instalacion, desconecta y volve a conectar el dispositivo.
+EOF
 }
 
-# Main
 main() {
     parse_args "$@"
-    print_header
 
-    check_arch
-    if [ "$RUN_DEPS" = false ] && [ "$RUN_SYSTEM_SETUP" = false ] && [ "$RUN_BUILD" = false ] && [ "$RUN_INSTALL" = false ] && [ "$RUN_AUTOSTART" = true ]; then
-        setup_autostart
+    printf '\n%sRedragon Stream Deck - instalador%s\n\n' "$C_BOLD" "$C_RESET"
+
+    if [ "$BUILD_ONLY" -eq 1 ]; then
+        check_rust
+        build_app
+        ok "Binario en src-tauri/target/release/$BIN_NAME"
         exit 0
     fi
 
-    preflight_sudo
-    if [ "$RUN_DEPS" = true ]; then
-        install_dependencies
-    fi
-    if [ "$RUN_SYSTEM_SETUP" = true ]; then
-        setup_ydotool
-        setup_udev
-    fi
-    if [ "$RUN_BUILD" = true ]; then
-        check_rust
-        build_app
-    fi
-    if [ "$RUN_INSTALL" = true ]; then
-        install_app
-    fi
-    if [ "$RUN_AUTOSTART" = true ]; then
-        setup_autostart
-    fi
+    detect_distro
+    install_dependencies
+    check_rust
+    build_app
+    install_app
+    setup_udev
+    setup_ydotool
+    setup_autostart
     show_summary
 }
 
-# Ejecutar si no se está sourcing
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
-fi
+main "$@"
