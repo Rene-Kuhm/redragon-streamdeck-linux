@@ -71,6 +71,14 @@ pub const PRODUCT_ID: u16 = 0x1000;
 // Global flag to signal refresh needed
 pub static REFRESH_NEEDED: AtomicBool = AtomicBool::new(false);
 
+/// Indica si el escucha de botones tiene la interfaz 0 tomada.
+///
+/// Mientras corre es el unico que puede dibujar: `claim_interface` es
+/// exclusivo, asi que cualquier otro camino que intente abrir el dispositivo
+/// para escribir se queda sin handle. Quien quiera redibujar en ese caso tiene
+/// que pedirselo con [`request_refresh`] en vez de abrirlo por su cuenta.
+pub static BUTTON_LISTENER_ACTIVE: AtomicBool = AtomicBool::new(false);
+
 // Global timer state (timestamp when timer started, 0 = not running)
 pub static TIMER_START: AtomicU64 = AtomicU64::new(0);
 pub static TIMER_DURATION: AtomicU64 = AtomicU64::new(0); // Duration in seconds
@@ -2155,11 +2163,29 @@ pub fn change_page(page_index: usize, config_path: &PathBuf, icons_path: &PathBu
         fs::write(config_path, content).ok();
     }
 
-    // Load the new page to device
-    if let Some(handle) = find_device() {
-        let page = &config.pages[page_index];
-        if let Err(e) = load_page_to_device(&handle, page, config.brightness, icons_path) {
-            debug_log!("Failed to load page: {}", e);
+    // Dibujar la pagina nueva.
+    //
+    // Antes esto abria su propio handle con `find_device()`. Mientras el escucha
+    // de botones corre eso NO puede funcionar: `claim_interface(0)` es
+    // exclusivo, falla con el dispositivo ocupado y `find_device` devuelve
+    // `None`, con lo cual el `if let` se saltaba el dibujado sin decir nada. El
+    // sintoma era que al cambiar de pagina el aparato se quedaba congelado en la
+    // anterior, aunque la configuracion si reflejara el cambio; el unico momento
+    // en que se veian las teclas nuevas era al arrancar, porque ahi todavia no
+    // habia nadie con la interfaz tomada.
+    //
+    // Ahora se le pide al escucha, que redibuja con el handle que ya tiene.
+    request_refresh();
+
+    // Sin escucha en marcha no hay quien atienda esa peticion —por ejemplo al
+    // cambiar de pagina antes de arrancarlo—, asi que ahi si corresponde
+    // dibujar directamente.
+    if !BUTTON_LISTENER_ACTIVE.load(Ordering::SeqCst) {
+        if let Some(handle) = find_device() {
+            let page = &config.pages[page_index];
+            if let Err(e) = load_page_to_device(&handle, page, config.brightness, icons_path) {
+                debug_log!("Failed to load page: {}", e);
+            }
         }
     }
 }
@@ -2181,6 +2207,7 @@ pub fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
             };
 
             debug_log!("Button listener connected to device");
+            BUTTON_LISTENER_ACTIVE.store(true, Ordering::SeqCst);
 
             // Load initial page on connect
             load_current_page_internal(&handle, &config_path, &icons_path);
@@ -2223,6 +2250,10 @@ pub fn start_button_listener(config_path: PathBuf, icons_path: PathBuf) {
                     }
                 }
             }
+
+            // Al soltar el handle deja de haber quien atienda las peticiones de
+            // redibujado, asi que se avisa antes de reconectar.
+            BUTTON_LISTENER_ACTIVE.store(false, Ordering::SeqCst);
 
             // Wait before reconnecting
             thread::sleep(Duration::from_secs(1));
