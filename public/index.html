@@ -5,558 +5,382 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Redragon Stream Deck</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23c1272d'/><g fill='%23fff'><rect x='20' y='22' width='24' height='24' rx='5'/><rect x='56' y='22' width='24' height='24' rx='5'/><rect x='20' y='56' width='24' height='24' rx='5'/><rect x='56' y='56' width='24' height='24' rx='5'/></g></svg>">
 </head>
 <body>
-  <!-- Animated Particles -->
-  <div class="particles" id="particles"></div>
 
-  <div class="container">
-    <header>
-      <div class="logo-section">
-        <div class="logo-icon">
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="2" width="16" height="16" rx="3" fill="url(#grad1)" opacity="0.9"/>
-            <rect x="22" y="2" width="16" height="16" rx="3" fill="url(#grad2)" opacity="0.7"/>
-            <rect x="2" y="22" width="16" height="16" rx="3" fill="url(#grad2)" opacity="0.7"/>
-            <rect x="22" y="22" width="16" height="16" rx="3" fill="url(#grad1)" opacity="0.9"/>
-            <defs>
-              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#e94560"/>
-                <stop offset="100%" style="stop-color:#ff6b6b"/>
-              </linearGradient>
-              <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#4ecca3"/>
-                <stop offset="100%" style="stop-color:#6ee7b7"/>
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
-        <div class="title-group">
-          <h1>Redragon Stream Deck</h1>
-          <span class="subtitle">por Tecnodespegue</span>
-        </div>
-      </div>
-      <div class="status">
-        <div class="status-badge">
-          <span id="status-indicator"></span>
-          <span id="status-text">Desconectado</span>
-        </div>
-        <button id="reconnect-btn" onclick="reconnect()">
-          <span class="btn-icon">⟳</span>
-          Reconectar
-        </button>
-        <button id="profiles-btn" onclick="openProfilesModal()" title="Administrar perfiles por aplicación">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          Perfiles
-        </button>
-      </div>
-    </header>
-
-    <div class="controls">
-      <label>
-        <span class="control-label">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"/>
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-          Brillo
-        </span>
-        <input type="range" id="brightness" min="0" max="100" value="50" onchange="setBrightness(this.value)">
-        <span id="brightness-value">50</span>%
-      </label>
-      <button onclick="confirmReset()" class="btn-reset" title="Borrar toda la configuración y empezar de cero">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="1 4 1 10 7 10"/>
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-        </svg>
-        Reset
-      </button>
-    </div>
-
-    <!-- Selector de páginas -->
-    <div class="pages-container">
-      <div class="pages-header">
-        <h3>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Páginas
-        </h3>
-        <button onclick="addPage()" class="btn-add">
-          <span>+</span> Nueva
-        </button>
-      </div>
-      <div id="pages-tabs" class="pages-tabs"></div>
-    </div>
-
-    <div class="streamdeck">
-      <div class="streamdeck-inner">
-        <!-- Fila 1: Botones 11-15 -->
-        <div class="row">
-          <div class="button" data-id="11" onclick="editButton(11)"></div>
-          <div class="button" data-id="12" onclick="editButton(12)"></div>
-          <div class="button" data-id="13" onclick="editButton(13)"></div>
-          <div class="button" data-id="14" onclick="editButton(14)"></div>
-          <div class="button" data-id="15" onclick="editButton(15)"></div>
-        </div>
-        <!-- Fila 2: Botones 6-10 -->
-        <div class="row">
-          <div class="button" data-id="6" onclick="editButton(6)"></div>
-          <div class="button" data-id="7" onclick="editButton(7)"></div>
-          <div class="button" data-id="8" onclick="editButton(8)"></div>
-          <div class="button" data-id="9" onclick="editButton(9)"></div>
-          <div class="button" data-id="10" onclick="editButton(10)"></div>
-        </div>
-        <!-- Fila 3: Botones 1-5 -->
-        <div class="row">
-          <div class="button" data-id="1" onclick="editButton(1)"></div>
-          <div class="button" data-id="2" onclick="editButton(2)"></div>
-          <div class="button" data-id="3" onclick="editButton(3)"></div>
-          <div class="button" data-id="4" onclick="editButton(4)"></div>
-          <div class="button" data-id="5" onclick="editButton(5)"></div>
-        </div>
-      </div>
-    </div>
-
-    <footer class="app-footer">
-      <span class="creator">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-          <path d="M2 2l7.586 7.586"/>
-          <circle cx="11" cy="11" r="2"/>
-        </svg>
-        Creado por <strong>Tecnodespegue</strong>
+  <!-- ══ Barra de título ══ -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="6" fill="#c1272d"/>
+        <g fill="#fff">
+          <rect x="6" y="7" width="8" height="8" rx="2"/>
+          <rect x="18" y="7" width="8" height="8" rx="2"/>
+          <rect x="6" y="18" width="8" height="8" rx="2"/>
+          <rect x="18" y="18" width="8" height="8" rx="2"/>
+        </g>
+      </svg>
+      <span class="titlebar-text">Redragon Stream Deck</span>
+      <span class="titlebar-sep">&mdash;</span>
+      <span class="titlebar-status">
+        <span id="status-indicator"></span>
+        <span id="status-text">Desconectado</span>
       </span>
-      <span class="version">v2.0</span>
-    </footer>
+    </div>
+    <div class="titlebar-right">
+      <span class="titlebar-author">por <strong>Tecnodespegue</strong></span>
+    </div>
+  </div>
 
-    <!-- Modal Editor -->
-    <div id="modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            Editar Botón <span id="modal-btn-id"></span>
-          </h2>
-        </div>
+  <!-- ══ Área de trabajo: tres columnas ══ -->
+  <div class="workspace">
 
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            Etiqueta
-          </label>
-          <input type="text" id="edit-label" placeholder="Texto del botón">
-        </div>
+    <!-- ─── Columna izquierda ─── -->
+    <aside class="sidebar">
 
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="4 17 10 11 4 5"/>
-              <line x1="12" y1="19" x2="20" y2="19"/>
-            </svg>
-            Comando
-          </label>
-          <div class="command-input-group">
-            <input type="text" id="edit-command" placeholder="ej: firefox, __URL_https://google.com">
-            <select id="preset-commands" onchange="applyPreset(this)">
-              <option value="">-- Comandos rápidos --</option>
-            </select>
+      <div class="side-toolbar">
+        <button id="reconnect-btn" class="tool-btn is-primary" onclick="reconnect()" title="Reconectar dispositivo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+        <button class="tool-btn" onclick="openProfilesModal()" title="Perfiles por aplicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </button>
+        <button class="tool-btn" onclick="toggleHelpPanel()" title="Comandos especiales">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </button>
+        <button class="tool-btn" onclick="toggleSettingsPanel()" title="Ajustes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Escenas / páginas -->
+      <div class="scene-list-wrap">
+        <div id="pages-tabs" class="scene-list"></div>
+      </div>
+
+      <div class="scene-actions">
+        <button class="mini-btn" onclick="addPage()" title="Nueva página">+</button>
+        <button class="mini-btn" onclick="deleteCurrentPage()" title="Eliminar página actual">&minus;</button>
+        <button class="mini-btn mini-btn-right" onclick="clearPageButtons()" title="Limpiar los botones de esta página">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 9h10M7 13h6"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Hardware -->
+      <div class="hardware">
+        <div class="hardware-title">Hardware</div>
+        <select class="hardware-select" disabled>
+          <option>SS-550</option>
+        </select>
+        <div class="device-art" title="Redragon SS-550 &mdash; 15 teclas">
+          <div class="device-art-frame">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
           </div>
-          <div class="command-help">
-            <details>
-              <summary>Comandos especiales disponibles</summary>
-              <ul class="command-list">
-                <li><code>__URL_</code> - Abrir URL (ej: <code>__URL_https://youtube.com</code>)</li>
-                <li><code>__TYPE_</code> - Escribir texto (ej: <code>__TYPE_Hola mundo</code>)</li>
-                <li><code>__KEY_</code> - Hotkey (ej: <code>__KEY_ctrl+shift+s</code>)</li>
-                <li><code>__MULTI_</code> - Multi-acción separada por <code>;;</code></li>
-                <li><code>__DELAY_</code> - Esperar ms (solo en MULTI)</li>
-                <li><code>__NEXT_PAGE__</code> / <code>__PREV_PAGE__</code> - Cambiar página</li>
-              </ul>
-              <strong>Widgets (actualización automática):</strong>
-              <ul class="command-list">
-                <li><code>__CLOCK__</code> / <code>__CLOCK_S__</code> - Hora actual</li>
-                <li><code>__DATE__</code> / <code>__WEEKDAY__</code> - Fecha</li>
-                <li><code>__CPU__</code> / <code>__RAM__</code> / <code>__TEMP__</code> - Info sistema</li>
-                <li><code>__TIMER_N__</code> - Temporizador N minutos</li>
-                <li><code>__OBS_STATUS__</code> - Estado OBS (LIVE/REC)</li>
-                <li><code>__TWITCH_VIEWERS__</code> / <code>__TWITCH_FOLLOWERS__</code> - Stats Twitch</li>
-              </ul>
-              <strong>OBS Studio (requiere OBS WebSocket):</strong>
-              <ul class="command-list">
-                <li><code>__OBS_STREAM__</code> - Iniciar/Detener streaming</li>
-                <li><code>__OBS_RECORD__</code> - Iniciar/Detener grabación</li>
-                <li><code>__OBS_MUTE__</code> - Mutear/Desmutear micrófono</li>
-                <li><code>__OBS_SCENE_nombre</code> - Cambiar escena (ej: <code>__OBS_SCENE_Gaming</code>)</li>
-              </ul>
-              <strong>Twitch (requiere API tokens):</strong>
-              <ul class="command-list">
-                <li><code>__TWITCH_CLIP__</code> - Crear clip</li>
-                <li><code>__TWITCH_AD_N__</code> - Comercial N segundos (ej: <code>__TWITCH_AD_30__</code>)</li>
-                <li><code>__TWITCH_CHAT_mensaje</code> - Enviar mensaje al chat</li>
-              </ul>
-              <details style="margin-top: 8px; font-size: 11px;">
-                <summary>Configuración OBS/Twitch</summary>
-                <p style="margin: 4px 0;">Variables de entorno requeridas:</p>
-                <code style="font-size: 10px; display: block; background: #0a0a14; padding: 4px; border-radius: 4px;">
-OBS_WEBSOCKET_URL=ws://localhost:4455<br>
-OBS_WEBSOCKET_PASSWORD=tupassword<br>
-TWITCH_CLIENT_ID=tu_client_id<br>
-TWITCH_ACCESS_TOKEN=tu_token<br>
-TWITCH_CHANNEL=tu_canal
-                </code>
-              </details>
-            </details>
+        </div>
+        <label class="brightness-row">
+          <span class="brightness-label">Brillo</span>
+          <input type="range" id="brightness" min="0" max="100" value="50" onchange="setBrightness(this.value)">
+          <span class="brightness-val"><span id="brightness-value">50</span>%</span>
+        </label>
+      </div>
+    </aside>
+
+    <!-- ─── Columna central ─── -->
+    <main class="stage">
+
+      <div class="deck-area">
+        <div class="streamdeck">
+          <div class="streamdeck-inner">
+            <div class="row">
+              <div class="button" data-id="11" onclick="editButton(11)"></div>
+              <div class="button" data-id="12" onclick="editButton(12)"></div>
+              <div class="button" data-id="13" onclick="editButton(13)"></div>
+              <div class="button" data-id="14" onclick="editButton(14)"></div>
+              <div class="button" data-id="15" onclick="editButton(15)"></div>
+            </div>
+            <div class="row">
+              <div class="button" data-id="6" onclick="editButton(6)"></div>
+              <div class="button" data-id="7" onclick="editButton(7)"></div>
+              <div class="button" data-id="8" onclick="editButton(8)"></div>
+              <div class="button" data-id="9" onclick="editButton(9)"></div>
+              <div class="button" data-id="10" onclick="editButton(10)"></div>
+            </div>
+            <div class="row">
+              <div class="button" data-id="1" onclick="editButton(1)"></div>
+              <div class="button" data-id="2" onclick="editButton(2)"></div>
+              <div class="button" data-id="3" onclick="editButton(3)"></div>
+              <div class="button" data-id="4" onclick="editButton(4)"></div>
+              <div class="button" data-id="5" onclick="editButton(5)"></div>
+            </div>
           </div>
-          <button type="button" onclick="testCommand()" class="btn-test">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            Probar comando
-          </button>
         </div>
 
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/>
-            </svg>
-            Hotkey Global (activar con teclado)
-          </label>
-          <div class="hotkey-input-group">
-            <input type="text" id="edit-hotkey" placeholder="Presiona 'Grabar' y luego las teclas..." readonly>
-            <button type="button" id="record-hotkey-btn" onclick="toggleHotkeyRecording()" class="btn-record">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="4" fill="currentColor"/>
-              </svg>
-              <span id="record-btn-text">Grabar</span>
-            </button>
-          </div>
-          <small class="hotkey-help">
-            Asigna una combinación de teclas para activar este botón desde cualquier aplicación.
-            <br>Formato: <code>__HOTKEY_Ctrl+F1__comando</code> - El comando se ejecuta al presionar la hotkey.
-          </small>
-        </div>
+        <div id="page-pills" class="page-pills"></div>
+      </div>
 
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="13.5" cy="6.5" r="2.5"/>
-              <circle cx="6.5" cy="17.5" r="2.5"/>
-              <circle cx="17.5" cy="17.5" r="2.5"/>
-            </svg>
-            Color de fondo
-          </label>
-          <input type="color" id="edit-color" value="#1a1a2e">
-        </div>
+      <!-- Panel de propiedades: en línea, no superpuesto -->
+      <div id="modal" class="props">
+        <div class="props-empty">Seleccione la tecla cuya acción desea configurar.</div>
 
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
-            Icono
-          </label>
-          <div class="icon-upload">
-            <div id="icon-preview" class="icon-preview"></div>
-            <div class="icon-actions">
-              <button onclick="browseIcon()" class="btn-primary btn-small">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                Buscar imagen
+        <div class="props-body">
+          <div class="props-head">
+            <span class="props-title">Tecla <span id="modal-btn-id"></span></span>
+            <div class="props-head-actions">
+              <button class="icon-btn" onclick="testCommand()" title="Probar comando">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               </button>
-              <button onclick="removeIcon()" class="btn-secondary btn-small">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="icon-btn icon-btn-danger" onclick="clearCurrentButton()" title="Borrar esta tecla">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
-                Quitar
               </button>
             </div>
           </div>
-          <input type="hidden" id="edit-icon-path">
-        </div>
 
-        <div class="modal-actions">
-          <button onclick="saveButton()" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-            Guardar
-          </button>
-          <button onclick="closeModal()" class="btn-secondary">Cancelar</button>
+          <div class="props-grid">
+            <div class="props-preview">
+              <div id="icon-preview" class="icon-preview"></div>
+              <div class="icon-actions">
+                <button onclick="browseIcon()" class="btn btn-quiet btn-sm">Examinar…</button>
+                <button onclick="removeIcon()" class="btn btn-quiet btn-sm">Quitar</button>
+              </div>
+              <input type="hidden" id="edit-icon-path">
+              <input type="hidden" id="edit-icon">
+            </div>
+
+            <div class="props-fields">
+              <div class="field">
+                <label for="edit-label">Título:</label>
+                <input type="text" id="edit-label" placeholder="Texto sobre la tecla">
+                <input type="color" id="edit-color" value="#1a1a2e" title="Color de fondo">
+              </div>
+
+              <div class="field">
+                <label for="edit-command">Aplicación/archivo:</label>
+                <input type="text" id="edit-command" placeholder="firefox, __URL_https://…, __CLOCK__">
+              </div>
+
+              <div class="field">
+                <label for="preset-commands">Acción rápida:</label>
+                <select id="preset-commands" onchange="applyPreset(this)">
+                  <option value="">-- Comandos rápidos --</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="edit-hotkey">Atajo global:</label>
+                <input type="text" id="edit-hotkey" placeholder="Pulse «Grabar» y luego las teclas…" readonly>
+                <button type="button" id="record-hotkey-btn" onclick="toggleHotkeyRecording()" class="btn btn-quiet btn-sm">
+                  <span id="record-btn-text">Grabar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="props-foot">
+            <button onclick="saveButton()" class="btn btn-accent">Guardar</button>
+            <button onclick="closeModal()" class="btn btn-quiet">Cancelar</button>
+          </div>
         </div>
       </div>
-    </div>
+    </main>
 
-    <!-- Modal Página (Editar) -->
-    <div id="page-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            Editar Página
-          </h2>
-        </div>
-        <div class="form-group">
-          <label>Nombre</label>
+    <!-- ─── Columna derecha: biblioteca de acciones ─── -->
+    <aside class="library">
+      <div class="library-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="action-search" placeholder="Buscar" oninput="filterActions(this.value)">
+      </div>
+      <div class="library-tab">Teclas</div>
+      <div id="action-categories" class="library-list"></div>
+    </aside>
+  </div>
+
+  <!-- ══ Panel de ayuda deslizante ══ -->
+  <div id="help-panel" class="side-panel">
+    <div class="side-panel-head">
+      <span>Comandos especiales</span>
+      <button class="icon-btn" onclick="toggleHelpPanel()">&times;</button>
+    </div>
+    <div class="side-panel-body">
+      <h4>Básicos</h4>
+      <ul class="command-list">
+        <li><code>__URL_</code> Abrir URL</li>
+        <li><code>__TYPE_</code> Escribir texto</li>
+        <li><code>__KEY_</code> Atajo de teclado</li>
+        <li><code>__MULTI_</code> Varias acciones, separadas por <code>;;</code></li>
+        <li><code>__DELAY_</code> Esperar ms (dentro de MULTI)</li>
+        <li><code>__NEXT_PAGE__</code> / <code>__PREV_PAGE__</code> / <code>__PAGE_N__</code></li>
+      </ul>
+      <h4>Widgets</h4>
+      <ul class="command-list">
+        <li><code>__CLOCK__</code> / <code>__CLOCK_S__</code></li>
+        <li><code>__DATE__</code> / <code>__DATE_FULL__</code> / <code>__WEEKDAY__</code></li>
+        <li><code>__CPU__</code> / <code>__RAM__</code> / <code>__TEMP__</code></li>
+        <li><code>__TIMER_N__</code> Temporizador</li>
+        <li><code>__WEATHER__</code> / <code>__OBS_STATUS__</code></li>
+        <li><code>__TWITCH_VIEWERS__</code> / <code>__TWITCH_FOLLOWERS__</code></li>
+      </ul>
+      <h4>OBS Studio</h4>
+      <ul class="command-list">
+        <li><code>__OBS_STREAM__</code> / <code>__OBS_RECORD__</code> / <code>__OBS_MUTE__</code></li>
+        <li><code>__OBS_SCENE_nombre</code></li>
+      </ul>
+      <h4>Twitch</h4>
+      <ul class="command-list">
+        <li><code>__TWITCH_CLIP__</code> / <code>__TWITCH_AD_30__</code></li>
+        <li><code>__TWITCH_CHAT_mensaje</code></li>
+      </ul>
+      <h4>Variables de entorno</h4>
+      <pre class="env-block">OBS_WEBSOCKET_URL=ws://localhost:4455
+OBS_WEBSOCKET_PASSWORD=…
+TWITCH_CLIENT_ID=…
+TWITCH_ACCESS_TOKEN=…
+TWITCH_CHANNEL=…</pre>
+    </div>
+  </div>
+
+  <!-- ══ Panel de ajustes deslizante ══ -->
+  <div id="settings-panel" class="side-panel">
+    <div class="side-panel-head">
+      <span>Ajustes</span>
+      <button class="icon-btn" onclick="toggleSettingsPanel()">&times;</button>
+    </div>
+    <div class="side-panel-body">
+      <button onclick="checkForUpdates()" class="btn btn-quiet btn-block">Buscar actualizaciones</button>
+      <button onclick="confirmReset()" class="btn btn-quiet btn-block btn-danger-text">Restablecer configuración</button>
+      <p class="side-panel-note">
+        Redragon Stream Deck para Linux &mdash; hecho por <strong>Tecnodespegue</strong>.<br>
+        Proyecto independiente, sin relación con el fabricante.
+      </p>
+    </div>
+  </div>
+
+  <!-- ══ Diálogos ══ -->
+
+  <div id="page-modal" class="modal-overlay">
+    <div class="dialog">
+      <div class="dialog-head">Editar página</div>
+      <div class="dialog-body">
+        <div class="field field-stack">
+          <label for="page-name">Nombre</label>
           <input type="text" id="page-name" placeholder="Nombre de la página">
         </div>
-        <div class="modal-actions">
-          <button onclick="savePageName()" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-            Guardar
-          </button>
-          <button onclick="clearPageButtons()" class="btn-warning">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="1 4 1 10 7 10"/>
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-            </svg>
-            Limpiar botones
-          </button>
-          <button onclick="deletePage()" class="btn-danger">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-            Eliminar página
-          </button>
-          <button onclick="closePageModal()" class="btn-secondary">Cancelar</button>
-        </div>
+      </div>
+      <div class="dialog-foot">
+        <button onclick="savePageName()" class="btn btn-accent">Guardar</button>
+        <button onclick="clearPageButtons()" class="btn btn-quiet">Limpiar botones</button>
+        <button onclick="deletePage()" class="btn btn-quiet btn-danger-text">Eliminar página</button>
+        <button onclick="closePageModal()" class="btn btn-quiet">Cancelar</button>
       </div>
     </div>
+  </div>
 
-    <!-- Modal Nueva Página -->
-    <div id="new-page-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <line x1="9" y1="15" x2="15" y2="15"/>
-            </svg>
-            Nueva Página
-          </h2>
-        </div>
-        <div class="form-group">
-          <label>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            Nombre de la página
-          </label>
-          <input type="text" id="new-page-name" placeholder="Ej: Streaming, Música, Trabajo...">
-        </div>
-        <div class="modal-actions">
-          <button onclick="createNewPage()" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Crear Página
-          </button>
-          <button onclick="closeNewPageModal()" class="btn-secondary">Cancelar</button>
+  <div id="new-page-modal" class="modal-overlay">
+    <div class="dialog">
+      <div class="dialog-head">Nueva página</div>
+      <div class="dialog-body">
+        <div class="field field-stack">
+          <label for="new-page-name">Nombre de la página</label>
+          <input type="text" id="new-page-name" placeholder="Ej: Streaming, Música, Trabajo…">
         </div>
       </div>
+      <div class="dialog-foot">
+        <button onclick="createNewPage()" class="btn btn-accent">Crear página</button>
+        <button onclick="closeNewPageModal()" class="btn btn-quiet">Cancelar</button>
+      </div>
     </div>
+  </div>
 
-    <!-- Modal Confirmar Eliminación -->
-    <div id="confirm-modal" class="modal">
-      <div class="modal-content modal-confirm">
-        <div class="confirm-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-        <h2>¿Eliminar página?</h2>
+  <div id="confirm-modal" class="modal-overlay">
+    <div class="dialog dialog-sm">
+      <div class="dialog-head">¿Eliminar página?</div>
+      <div class="dialog-body">
         <p id="confirm-message">Esta acción no se puede deshacer.</p>
-        <div class="modal-actions">
-          <button onclick="confirmDelete()" class="btn-danger">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-            Eliminar
-          </button>
-          <button onclick="closeConfirmModal()" class="btn-secondary">Cancelar</button>
-        </div>
+      </div>
+      <div class="dialog-foot">
+        <button onclick="confirmDelete()" class="btn btn-accent btn-danger-bg">Eliminar</button>
+        <button onclick="closeConfirmModal()" class="btn btn-quiet">Cancelar</button>
       </div>
     </div>
+  </div>
 
-    <!-- Modal de Perfiles por Aplicación -->
-    <div id="profiles-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            Perfiles por Aplicación
-          </h2>
-        </div>
-        <p class="profiles-description">Asocia una aplicación activa a una página del Stream Deck. El perfil cambiará automáticamente al cambiar de aplicación.</p>
+  <div id="profiles-modal" class="modal-overlay">
+    <div class="dialog">
+      <div class="dialog-head">Perfiles por aplicación</div>
+      <div class="dialog-body">
+        <p class="dialog-note">Asocia una aplicación activa a una página. El perfil cambia solo al cambiar de aplicación.</p>
         <div id="profiles-list" class="profiles-list"></div>
         <div class="profile-add-form">
-          <input type="text" id="profile-app-name" placeholder="Nombre de la aplicación (ej: firefox, obs)">
+          <input type="text" id="profile-app-name" placeholder="Aplicación (ej: firefox, obs)">
           <select id="profile-page-select"></select>
-          <button onclick="addAppProfile()" class="btn-primary btn-small">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Agregar
-          </button>
-        </div>
-        <div class="modal-actions">
-          <button onclick="closeProfilesModal()" class="btn-secondary">Cerrar</button>
+          <button onclick="addAppProfile()" class="btn btn-accent btn-sm">Agregar</button>
         </div>
       </div>
+      <div class="dialog-foot">
+        <button onclick="closeProfilesModal()" class="btn btn-quiet">Cerrar</button>
+      </div>
     </div>
+  </div>
 
-    <!-- Modal de Actualización -->
-    <div id="update-modal" class="modal">
-      <div class="modal-content modal-update">
-        <div class="update-header">
-          <div class="update-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-          </div>
-          <h2>Actualización Disponible</h2>
-          <p class="update-subtitle">Una nueva versión está disponible para descargar</p>
-        </div>
-
-        <div class="update-version-info">
-          <div class="version-badge current">
+  <div id="update-modal" class="modal-overlay">
+    <div class="dialog">
+      <div class="dialog-head">Actualización disponible</div>
+      <div class="dialog-body">
+        <div class="update-versions">
+          <div class="version-badge">
             <span class="version-label">Versión actual</span>
             <span id="current-version-display" class="version-number">v2.0.0</span>
             <span id="current-commit-display" class="commit-hash"></span>
           </div>
-          <div class="version-arrow">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12 5 19 12 12 19"/>
-            </svg>
-          </div>
-          <div class="version-badge new">
+          <span class="version-arrow">&rarr;</span>
+          <div class="version-badge">
             <span class="version-label">Nueva versión</span>
             <span id="new-version-display" class="version-number">v2.1.0</span>
             <span id="new-commit-display" class="commit-hash"></span>
           </div>
         </div>
-
-        <div class="update-changelog">
-          <h3>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            Cambios en esta actualización
-          </h3>
-          <div id="changelog-list" class="changelog-list">
-            <!-- Changes will be inserted here -->
-          </div>
-        </div>
-
-        <div class="update-actions">
-          <button onclick="performUpdate()" class="btn-update">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Instalar Actualización
-          </button>
-          <button onclick="closeUpdateModal()" class="btn-secondary">Recordar más tarde</button>
-          <button onclick="skipUpdate()" class="btn-skip">Omitir esta versión</button>
-        </div>
-
-        <div class="update-note">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
-          <span>La aplicación se cerrará durante la actualización. Tus configuraciones se mantendrán.</span>
-        </div>
+        <h4 class="update-changelog-title">Cambios en esta actualización</h4>
+        <div id="changelog-list" class="changelog-list"></div>
+        <p class="dialog-note">La aplicación se cerrará durante la actualización. Tus configuraciones se mantienen.</p>
       </div>
-    </div>
-
-    <!-- Indicador de actualización en la barra de estado -->
-    <div id="update-indicator" class="update-indicator hidden" onclick="showUpdateModal()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      <span>Actualización disponible</span>
+      <div class="dialog-foot">
+        <button onclick="performUpdate()" class="btn btn-accent">Instalar actualización</button>
+        <button onclick="closeUpdateModal()" class="btn btn-quiet">Recordar más tarde</button>
+        <button onclick="skipUpdate()" class="btn btn-quiet">Omitir esta versión</button>
+      </div>
     </div>
   </div>
 
+  <div id="update-indicator" class="update-indicator hidden" onclick="showUpdateModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+    <span>Actualización disponible</span>
+  </div>
+
   <script src="app-tauri.js"></script>
-  <script>
-    // Create animated particles
-    function createParticles() {
-      const container = document.getElementById('particles');
-      const particleCount = 50;
-
-      for (let i = 0; i < particleCount; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        particle.style.cssText = `
-          left: ${Math.random() * 100}%;
-          top: ${Math.random() * 100}%;
-          animation-delay: ${Math.random() * 20}s;
-          animation-duration: ${15 + Math.random() * 20}s;
-        `;
-        container.appendChild(particle);
-      }
-    }
-
-    createParticles();
-  </script>
+  <script src="ui-shell.js"></script>
 </body>
 </html>
