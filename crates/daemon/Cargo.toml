@@ -1,0 +1,14 @@
+[package]
+name = "redragon-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Headless driver for the Redragon Stream Deck"
+
+[[bin]]
+name = "redragon-daemon"
+path = "src/main.rs"
+
+# Solo el core y dirs. Sin Tauri, sin GTK, sin webkit.
+[dependencies]
+redragon-core = { path = "../core" }
+dirs = "5"
