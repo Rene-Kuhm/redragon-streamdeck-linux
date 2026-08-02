@@ -68,6 +68,27 @@ En una distribución no listada, instalá las dependencias a mano y usá
 | `--build-only` | Solo compila, no toca el sistema |
 | `--skip-deps` | No instala dependencias del sistema |
 | `--no-autostart` | No configura el arranque automático |
+| `--daemon-only` | Solo el daemon, sin interfaz gráfica |
+
+### Uso sin entorno gráfico
+
+El proyecto se divide en un daemon que maneja el dispositivo y una interfaz
+gráfica opcional para configurarlo. El daemon no depende de Tauri, GTK ni
+webkit, así que funciona en un equipo sin escritorio, por SSH o en un servidor:
+
+```bash
+./install.sh --daemon-only
+```
+
+Ambos comparten el mismo `config.json`, de modo que podés configurar los botones
+con la aplicación en un equipo y después dejar corriendo solo el daemon. No
+pueden usar el dispositivo a la vez: los units de systemd lo declaran con
+`Conflicts=`.
+
+```bash
+systemctl --user disable --now redragon-streamdeck   # apagar la interfaz
+systemctl --user enable  --now redragon-daemon       # usar solo el daemon
+```
 
 ## Uso
 

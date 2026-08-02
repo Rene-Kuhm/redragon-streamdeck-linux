@@ -11,6 +11,7 @@
 set -euo pipefail
 
 readonly BIN_NAME="redragon-streamdeck"
+readonly DAEMON_NAME="redragon-daemon"
 readonly INSTALL_DIR="/usr/local/bin"
 readonly UDEV_RULE="/etc/udev/rules.d/60-redragon-streamdeck.rules"
 readonly USB_VENDOR="0200"
@@ -24,6 +25,7 @@ PKG_INSTALL=""
 SKIP_DEPS=0
 BUILD_ONLY=0
 NO_AUTOSTART=0
+DAEMON_ONLY=0
 
 # ---------------------------------------------------------------- presentacion
 
@@ -49,6 +51,8 @@ Opciones:
   --build-only     Solo compila; no instala nada ni toca el sistema.
   --skip-deps      No instala dependencias del sistema (ya las tenes).
   --no-autostart   No configura el arranque automatico con systemd.
+  --daemon-only    Instala solo el daemon sin interfaz y sin sus dependencias
+                   graficas. Para equipos sin entorno de escritorio.
   -h, --help       Esta ayuda.
 
 Distros soportadas: Fedora/RHEL, Debian/Ubuntu, Arch y openSUSE,
@@ -62,6 +66,7 @@ parse_args() {
             --build-only)   BUILD_ONLY=1 ;;
             --skip-deps)    SKIP_DEPS=1 ;;
             --no-autostart) NO_AUTOSTART=1 ;;
+            --daemon-only)  DAEMON_ONLY=1 ;;
             -h|--help)      show_help; exit 0 ;;
             *)              fail "opcion desconocida: $1 (usa --help)" ;;
         esac
@@ -159,6 +164,14 @@ install_dependencies() {
 
     local packages
     packages=$(packages_for "$DISTRO_FAMILY" | tr -s '[:space:]' ' ')
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        # El daemon no enlaza webkit ni gtk; instalarlos seria traer media
+        # pila grafica a un equipo que quiza ni tenga escritorio.
+        packages=$(printf '%s' "$packages" | tr ' ' '\n' \
+            | grep -vE 'webkit|gtk|appindicator|librsvg' | tr '\n' ' ')
+        warn "--daemon-only: se omiten las dependencias graficas"
+    fi
 
     [ "$DISTRO_FAMILY" = "debian" ] && need_root apt-get update
 
@@ -264,16 +277,35 @@ check_rust() {
 }
 
 build_app() {
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        step "Compilando el daemon"
+        ( cd "$SCRIPT_DIR" && cargo build --release -p redragon-daemon )
+        ok "Compilado"
+        return
+    fi
+
     step "Compilando (tarda unos minutos)"
-    cargo build --release --manifest-path "$SCRIPT_DIR/src-tauri/Cargo.toml"
+    ( cd "$SCRIPT_DIR" && cargo build --release --workspace )
     ok "Compilado"
 }
 
 install_app() {
-    local built="$SCRIPT_DIR/src-tauri/target/release/$BIN_NAME"
-    [ -f "$built" ] || fail "no existe $built; corre el script sin --build-only"
+    local target="$SCRIPT_DIR/target/release"
 
-    step "Instalando la aplicacion"
+    step "Instalando"
+
+    # El daemon se instala siempre: es lo que maneja el dispositivo y funciona
+    # igual en un equipo sin entorno grafico.
+    [ -f "$target/$DAEMON_NAME" ] || fail "no existe $target/$DAEMON_NAME; corre el script sin --build-only"
+    need_root install -Dm755 "$target/$DAEMON_NAME" "$INSTALL_DIR/$DAEMON_NAME"
+    ok "Daemon instalado en $INSTALL_DIR/$DAEMON_NAME"
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        return
+    fi
+
+    local built="$target/$BIN_NAME"
+    [ -f "$built" ] || fail "no existe $built; corre el script sin --build-only"
     need_root install -Dm755 "$built" "$INSTALL_DIR/$BIN_NAME"
 
     mkdir -p "$HOME/.local/share/applications"
@@ -301,6 +333,19 @@ setup_autostart() {
 
     step "Configurando arranque automatico"
     mkdir -p "$HOME/.config/systemd/user"
+
+    # Los dos units se instalan, pero solo se habilita uno: el dispositivo no
+    # puede estar tomado por la GUI y el daemon a la vez (Conflicts= lo declara).
+    install -Dm644 "$SCRIPT_DIR/$DAEMON_NAME.service" \
+        "$HOME/.config/systemd/user/$DAEMON_NAME.service"
+
+    if [ "$DAEMON_ONLY" -eq 1 ]; then
+        systemctl --user daemon-reload
+        systemctl --user enable "$DAEMON_NAME.service"
+        ok "El daemon arranca solo al iniciar sesion"
+        return
+    fi
+
     install -Dm644 "$SCRIPT_DIR/$BIN_NAME.service" \
         "$HOME/.config/systemd/user/$BIN_NAME.service"
     systemctl --user daemon-reload
@@ -315,6 +360,9 @@ show_summary() {
   Iniciar:      systemctl --user start $BIN_NAME
   Ver logs:     journalctl --user -u $BIN_NAME -f
   Diagnostico:  REDRAGON_STREAMDECK_DEBUG=1 $BIN_NAME
+
+  Sin interfaz: systemctl --user disable --now $BIN_NAME
+                systemctl --user enable --now $DAEMON_NAME
 
   Si es la primera instalacion, desconecta y volve a conectar el dispositivo.
 EOF
