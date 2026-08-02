@@ -1483,6 +1483,19 @@ fn reload_hotkeys(state: State<AppState>) -> Result<(), String> {
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "Rene-Kuhm/redragon-streamdeck-linux-";
 const CURRENT_COMMIT: Option<&str> = option_env!("REDRAGON_CURRENT_COMMIT");
+const RELEASE_TAG: Option<&str> = option_env!("REDRAGON_RELEASE_TAG");
+
+/// Version que este binario declara tener, sin la `v` inicial.
+///
+/// Manda la etiqueta que `build.rs` grabo al compilar, porque es la que avanza
+/// con cada release; `Cargo.toml` queda como respaldo para compilaciones fuera
+/// de un repositorio con etiquetas.
+fn installed_version() -> String {
+    RELEASE_TAG
+        .filter(|tag| parse_version(tag).is_some())
+        .map(|tag| tag.trim_start_matches(['v', 'V']).to_string())
+        .unwrap_or_else(|| CURRENT_VERSION.to_string())
+}
 
 fn short_commit(commit: &str) -> String {
     commit[..7.min(commit.len())].to_string()
@@ -1585,7 +1598,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         debug_log!("The repository has no published releases");
         return Ok(UpdateInfo {
             available: false,
-            current_version: CURRENT_VERSION.to_string(),
+            current_version: installed_version(),
             current_commit,
             latest_commit: String::new(),
             latest_commit_short: String::new(),
@@ -1610,7 +1623,8 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         published.to_string()
     };
 
-    let available = is_newer(&tag, CURRENT_VERSION);
+    let installed = installed_version();
+    let available = is_newer(&tag, &installed);
 
     // Las notas del release son el registro de cambios. Se listan las lineas
     // con contenido, quitando las viñetas para no duplicarlas en la interfaz.
@@ -1631,15 +1645,15 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         .collect();
 
     debug_log!(
-        "Latest release: {} (current {}), available: {}",
+        "Latest release: {} (installed {}), available: {}",
         tag,
-        CURRENT_VERSION,
+        installed,
         available
     );
 
     Ok(UpdateInfo {
         available,
-        current_version: CURRENT_VERSION.to_string(),
+        current_version: installed,
         current_commit,
         latest_commit: tag.clone(),
         latest_commit_short: tag,
@@ -1649,8 +1663,17 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
 }
 
 #[tauri::command]
-async fn install_update() -> Result<String, String> {
-    debug_log!("Starting update installation...");
+async fn install_update(tag: Option<String>) -> Result<String, String> {
+    debug_log!("Starting update installation for {:?}...", tag);
+
+    // Se clona la etiqueta del release, no la punta de main. Asi el usuario
+    // recibe exactamente lo publicado —y no un main a medio camino entre dos
+    // versiones— y `build.rs` graba esa misma etiqueta, que es lo que evita
+    // que el binario nuevo vuelva a anunciarse como desactualizado.
+    let clone_args = match tag.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(tag) => format!("--depth 1 --branch \"{}\"", tag.replace('"', "")),
+        None => "--depth 1".to_string(),
+    };
 
     // Se reinstala sobre el mismo ejecutable que esta corriendo. Antes esto
     // copiaba a /usr/local/bin con sudo, que en un script sin terminal se
@@ -1664,6 +1687,7 @@ async fn install_update() -> Result<String, String> {
 set -euo pipefail
 
 REPO_URL="https://github.com/{repo}.git"
+CLONE_ARGS=({clone_args})
 INSTALL_PATH="{install_path}"
 SERVICE="redragon-streamdeck.service"
 
@@ -1674,7 +1698,7 @@ echo "=== Actualizando Redragon Stream Deck ==="
 echo ""
 
 echo "[1/5] Descargando ultima version..."
-git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo"
+git clone "${{CLONE_ARGS[@]}}" "$REPO_URL" "$TEMP_DIR/repo"
 
 cd "$TEMP_DIR/repo"
 
@@ -1722,6 +1746,7 @@ echo "=== Actualizacion completada ==="
 echo "Copia de seguridad de la version anterior: $INSTALL_PATH.bak"
 "#,
         repo = GITHUB_REPO,
+        clone_args = clone_args,
         install_path = install_path.display()
     );
 
@@ -1781,7 +1806,7 @@ echo "Copia de seguridad de la version anterior: $INSTALL_PATH.bak"
 #[tauri::command]
 fn get_current_version() -> (String, String) {
     (
-        CURRENT_VERSION.to_string(),
+        installed_version(),
         CURRENT_COMMIT
             .map(short_commit)
             .unwrap_or_else(|| "unknown".to_string()),
