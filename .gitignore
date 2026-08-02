@@ -3,6 +3,9 @@ node_modules/
 
 # Build output
 dist/
+# El workspace deja el target en la raiz; el de src-tauri queda por
+# compatibilidad con clones anteriores a la separacion en crates.
+/target/
 src-tauri/target/
 src-tauri/gen/
 

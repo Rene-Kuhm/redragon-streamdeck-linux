@@ -1,0 +1,26 @@
+[package]
+name = "redragon-core"
+version = "0.1.0"
+edition = "2021"
+description = "Device logic for the Redragon Stream Deck: USB, button images, widgets and integrations"
+
+# Deliberadamente sin Tauri, GTK ni webkit. Este crate tiene que compilar y
+# correr en cualquier Linux, incluso sin entorno grafico, para que el daemon
+# no arrastre la pila de la GUI.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusb = "0.9"
+image = { version = "0.25", features = ["jpeg", "png"] }
+imageproc = "0.25"
+ab_glyph = "0.2"
+base64 = "0.22"
+chrono = "0.4"
+sysinfo = "0.32"
+lazy_static = "1.4"
+tungstenite = "0.21"
+url = "2"
+sha2 = "0.10"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+urlencoding = "2"
+dirs = "5"
