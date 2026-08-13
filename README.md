@@ -13,6 +13,13 @@ mismo en Fedora, Debian, Arch, openSUSE, Gentoo, Void, NixOS o la que uses. Lo
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.70+-orange)
 
+![Panel principal: páginas a la izquierda, grilla de 15 teclas al centro y biblioteca de acciones a la derecha](docs/screenshots/panel-principal.png)
+
+Cada tecla se configura desde el panel inferior: título, aplicación o comando,
+acciones rápidas predefinidas y grabación de un atajo global.
+
+![Configuración de una tecla, con título, aplicación, acción rápida y atajo global](docs/screenshots/configurar-tecla.png)
+
 ## Características
 
 ### Funciones Básicas
