@@ -67,8 +67,8 @@ acciones rápidas predefinidas y grabación de un atajo global.
 ## Instalación
 
 ```bash
-git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux-.git
-cd redragon-streamdeck-linux-
+git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux.git
+cd redragon-streamdeck-linux
 ./install.sh
 ```
 
