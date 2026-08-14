@@ -1,70 +1,94 @@
-# Redragon Stream Deck Linux
+# Redragon Stream Deck for Linux
 
-Driver y panel de control open source para **Redragon SS-550 Stream Deck** en Linux.
+**English** · [Español](README.es.md)
 
-**Funciona en cualquier distribución de Linux.** No está atado a ninguna: se
-compila desde el código y habla con el dispositivo por USB, así que corre lo
-mismo en Fedora, Debian, Arch, openSUSE, Gentoo, Void, NixOS o la que uses. Lo
-único que cambia de una a otra es cuánto trabajo te ahorra el instalador — ver
-[Instalación](#instalación).
+Open source driver and control panel for the **Redragon SS-550 Stream Deck** on Linux.
+
+**It runs on any Linux distribution.** Nothing here is tied to one: the project
+is built from source and talks to the device over USB, so it behaves the same on
+Fedora, Debian, Arch, openSUSE, Gentoo, Void, NixOS or whatever you use. The only
+thing that changes between them is how much work the installer saves you — see
+[Installation](#installation).
 
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.70+-orange)
 
-![Panel principal: páginas a la izquierda, grilla de 15 teclas al centro y biblioteca de acciones a la derecha](docs/screenshots/panel-principal.png)
+![Main panel: pages on the left, a grid of 15 keys in the centre, action library on the right](docs/screenshots/panel-principal.png)
 
-Cada tecla se configura desde el panel inferior: título, aplicación o comando,
-acciones rápidas predefinidas y grabación de un atajo global.
+Each key is configured from the bottom panel: title, application or command,
+predefined quick actions, and a recorded global shortcut.
 
-![Configuración de una tecla, con título, aplicación, acción rápida y atajo global](docs/screenshots/configurar-tecla.png)
+![Key configuration, showing title, application, quick action and global shortcut](docs/screenshots/configurar-tecla.png)
 
-## Características
+---
 
-### Funciones Básicas
-- Interfaz gráfica nativa (Tauri/GTK), organizada en tres columnas: páginas a
-  la izquierda, la grilla de teclas al centro y una biblioteca de acciones
-  buscable a la derecha
-- Soporte para múltiples páginas de botones
-- Iconos personalizados (100x100)
-- Ejecución de comandos del sistema
-- Control de brillo
-- Navegación entre páginas con botones físicos
-- **Cerrar la ventana no cierra la aplicación**: se oculta en la bandeja y el
-  dispositivo sigue atendido
-- Compatible con Wayland (Hyprland, Sway, GNOME) y X11
+## Table of contents
 
-### Funciones Avanzadas
-- **URLs**: Abrir páginas web con un botón
-- **Texto**: Escribir texto automáticamente (ydotool)
-- **Hotkeys**: Simular atajos de teclado (Ctrl+C, Alt+Tab, etc.)
-- **Atajos globales**: Disparar un botón desde el teclado, sin tocar el aparato
-- **Multi-acción**: Secuencias de comandos con delays
-- **Perfiles por aplicación**: Cambiar de página automáticamente según la
-  aplicación que esté en primer plano
+- [Features](#features)
+- [Installation](#installation)
+  - [Quick install](#quick-install)
+  - [What the installer actually does](#what-the-installer-actually-does)
+  - [Distribution support](#distribution-support)
+  - [Installer options](#installer-options)
+  - [Distributions the installer does not know](#distributions-the-installer-does-not-know)
+  - [Systems without systemd](#systems-without-systemd)
+  - [Headless machines](#headless-machines)
+- [Usage](#usage)
+- [Button commands](#button-commands)
+- [Integrations](#integrations)
+- [Button layout](#button-layout)
+- [Project structure](#project-structure)
+- [Updates](#updates)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [Supported devices](#supported-devices)
+- [Contributing](#contributing)
 
-### Widgets Dinámicos (actualización automática)
-- **Reloj**: Hora actual (con/sin segundos)
-- **Fecha**: Día, mes, año, día de la semana
-- **Sistema**: CPU%, RAM%, Temperatura
-- **Temporizador**: Cuenta regresiva configurable
-- **Clima**: Temperatura y estado actual (Open-Meteo)
-- **Música**: Lo que está sonando, vía playerctl
+---
 
-### Integraciones de Streaming
-- **OBS Studio** (WebSocket 5.x):
-  - Iniciar/detener streaming y grabación
-  - Cambiar escenas
-  - Mutear/desmutear micrófono
-  - Widget de estado en tiempo real
-- **Twitch API**:
-  - Mostrar viewers y followers en botones
-  - Crear clips con un clic
-  - Correr comerciales
-  - Enviar mensajes al chat
+## Features
 
-## Instalación
+### Core
+- Native GUI (Tauri/GTK) in three columns: pages on the left, the key grid in
+  the centre, and a searchable action library on the right
+- Multiple pages of buttons
+- Custom icons (100×100)
+- Runs system commands
+- Brightness control
+- Page navigation from the physical keys
+- **Closing the window does not quit the app**: it hides in the tray and the
+  device keeps working
+- Works on Wayland (Hyprland, Sway, GNOME) and X11
+
+### Advanced
+- **URLs**: open a web page from a key
+- **Text**: type text automatically (via ydotool)
+- **Hotkeys**: send key combinations (Ctrl+C, Alt+Tab, …)
+- **Global shortcuts**: trigger a key from the keyboard without touching the device
+- **Multi-action**: command sequences with delays
+- **Per-application profiles**: switch page automatically based on the focused window
+
+### Live widgets
+- **Clock**: current time, with or without seconds
+- **Date**: day, month, year, weekday
+- **System**: CPU %, RAM %, temperature
+- **Timer**: configurable countdown
+- **Weather**: current temperature and conditions (Open-Meteo)
+- **Music**: what is playing, via playerctl
+
+### Streaming integrations
+- **OBS Studio** (WebSocket 5.x): start/stop streaming and recording, switch
+  scenes, mute the microphone, live status widget
+- **Twitch API**: viewer and follower counts on keys, create clips, run
+  commercials, send chat messages
+
+---
+
+## Installation
+
+### Quick install
 
 ```bash
 git clone https://github.com/Rene-Kuhm/redragon-streamdeck-linux.git
@@ -72,328 +96,440 @@ cd redragon-streamdeck-linux
 ./install.sh
 ```
 
-El instalador detecta la distribución leyendo `/etc/os-release`, instala las
-dependencias, compila, configura la regla udev y ydotool, y deja la aplicación
-lista para arrancar sola al iniciar sesión.
+That is the whole thing on a supported distribution. The build takes a few
+minutes — it compiles a Rust workspace. Everything the script does is described
+below, because piping an installer at your system without knowing what it
+touches is a bad habit.
 
-**En cualquier distribución funciona; lo que cambia es cuánto hace el
-instalador por vos.**
+### What the installer actually does
 
-| Distribución | Qué hace falta |
+In order:
+
+**1. Detects your distribution.** It reads `/etc/os-release` and matches `ID`
+and `ID_LIKE` against four families: `fedora`, `debian`, `arch` and `suse`.
+Matching on `ID_LIKE` is why derivatives work without being listed one by one —
+Linux Mint, Pop!_OS, EndeavourOS, CachyOS, Nobara and the rest resolve to their
+parent family. If nothing matches, it stops and tells you to use `--skip-deps`
+rather than failing halfway through.
+
+**2. Installs system dependencies** with your package manager (`dnf`,
+`apt-get`, `pacman` or `zypper`). The set is the same everywhere, only the
+package names differ:
+
+| Purpose | What is installed |
 |---|---|
-| Fedora/RHEL, Debian/Ubuntu, Arch, openSUSE | Nada: `./install.sh` y listo |
-| Derivados (Mint, Pop!\_OS, CachyOS, EndeavourOS, Nobara…) | Nada: se reconocen solos por `ID_LIKE` |
-| Cualquier otra (Gentoo, Void, NixOS, Slackware…) | Instalar las dependencias a mano y usar `./install.sh --skip-deps` |
+| Toolchain | C/C++ compiler, `make`, `pkg-config`, `git`, `curl` |
+| Device access | `libusb` 1.0 |
+| GUI | GTK 3, WebKit2GTK 4.1 |
+| Tray icon | `librsvg`, Ayatana AppIndicator |
+| TLS | OpenSSL |
+| Key labels | DejaVu Sans font |
+| Keyboard actions | `ydotool` |
+| Music widget | `playerctl` |
 
-Las dependencias son las mismas en todos lados, sólo cambian los nombres de los
-paquetes: compilador de C y Rust, `libusb`, GTK 3 y WebKit2GTK 4.1 para la
-interfaz, `librsvg` y appindicator para el icono de bandeja, OpenSSL, una fuente
-DejaVu para el texto de las teclas, y `ydotool` y `playerctl` para los atajos y
-el widget de música. Si tu distribución no está en la lista, el instalador te lo
-dice y te indica cómo seguir, en vez de fallar sin explicación.
+With `--daemon-only` the graphical packages (`webkit`, `gtk`, `appindicator`,
+`librsvg`) are filtered out, so a headless box does not pull in half a desktop.
 
-### Si tu sistema no usa systemd
+**3. Installs the udev rule** at `/etc/udev/rules.d/60-redragon-streamdeck.rules`:
 
-El arranque automático se configura con unidades de usuario de systemd. En
-distribuciones con otro init (runit, OpenRC, s6…) la aplicación funciona igual
-—no depende de systemd para nada de lo suyo— pero el arranque lo configurás vos:
+```
+SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", TAG+="uaccess"
+```
+
+Two deliberate choices here:
+
+- It uses `TAG+="uaccess"`, which grants access to the user of the active local
+  session — exactly what is needed. It does **not** use `MODE="0666"`, which
+  would make the device writable by every user on the machine and gains nothing.
+- The filename starts with `60-` so it is evaluated **before**
+  `73-seat-late.rules`, which is what applies `uaccess`. A rule named `99-`
+  would run after it and the tag would silently do nothing.
+
+If a rule from an older version is present (`99-redragon-streamdeck.rules` or
+`99-redragon.rules`, both world-writable) the installer removes it.
+
+**4. Configures ydotool**, which is what makes the keyboard actions work. It
+writes a `ydotoold.service` unit that puts the socket at
+`/run/ydotoold/socket` with permissions `0660` and group `input` — not in
+`/tmp`, which is world-writable and cleaned out by several distributions. It
+then adds you to the `input` group if you are not in it, and writes
+`~/.config/environment.d/60-redragon-ydotool.conf` so the app finds the socket:
+
+```
+YDOTOOL_SOCKET=/run/ydotoold/socket
+```
+
+Being added to a group only takes effect on a new login session.
+
+**5. Installs Rust** via rustup if `cargo` is not already on your `PATH`
+(stable toolchain, minimal profile). If you already have Rust, it is left alone.
+
+**6. Builds** with `cargo build --release --workspace`, or only the daemon crate
+under `--daemon-only`.
+
+**7. Installs the binaries** to `/usr/local/bin`. The daemon is always installed
+— it is what drives the device and it runs fine without a desktop. The GUI is
+installed unless you passed `--daemon-only`, along with a `.desktop` entry in
+`~/.local/share/applications`.
+
+**8. Enables autostart** through systemd user units, unless you passed
+`--no-autostart`.
+
+After installing, **unplug and replug the Stream Deck** so the new udev rule
+applies to it.
+
+### Distribution support
+
+| Distribution | What you need to do |
+|---|---|
+| Fedora/RHEL, Debian/Ubuntu, Arch, openSUSE | Nothing: `./install.sh` |
+| Derivatives (Mint, Pop!_OS, CachyOS, EndeavourOS, Nobara…) | Nothing: recognised through `ID_LIKE` |
+| Anything else (Gentoo, Void, NixOS, Slackware…) | Install the dependencies yourself, then `./install.sh --skip-deps` |
+
+openSUSE is not covered by CI: package names drift between Leap and Tumbleweed.
+If one of them fails to resolve, install by hand and use `--skip-deps`.
+
+### Installer options
+
+| Option | Effect |
+|---|---|
+| `--build-only` | Build only; installs nothing and touches nothing on the system |
+| `--skip-deps` | Do not install system dependencies |
+| `--no-autostart` | Do not configure autostart |
+| `--daemon-only` | Install just the daemon, without the GUI or its graphical dependencies |
+| `-h`, `--help` | Show help |
+
+Anything else is rejected: unknown options abort with an error rather than being
+ignored.
+
+### Distributions the installer does not know
+
+The application itself has no distribution-specific code. Install the equivalent
+of the dependency table above with your own package manager, then:
+
+```bash
+./install.sh --skip-deps
+```
+
+Adding proper support for a distribution is one entry in the `packages_for()`
+function in `install.sh` — pull requests welcome.
+
+### Systems without systemd
+
+Autostart is set up with systemd user units. On runit, OpenRC, s6 or anything
+else the application works exactly the same — nothing in it depends on systemd —
+but you wire the startup yourself:
 
 ```bash
 ./install.sh --no-autostart
 ```
 
-Después lanzás `redragon-streamdeck` como prefieras: con el autoarranque de tu
-escritorio, un script de sesión o un servicio de tu propio init.
+Then launch `redragon-streamdeck` however you prefer: your desktop's autostart,
+a session script, or a service for your own init.
 
-### Opciones
+Note that `ydotoold` is also installed as a systemd unit. Without systemd you
+will need to start `ydotoold` yourself, with a socket at `/run/ydotoold/socket`,
+mode `0660`, group `input`, for the keyboard actions to work.
 
-| Opción | Efecto |
-|---|---|
-| `--build-only` | Solo compila, no toca el sistema |
-| `--skip-deps` | No instala dependencias del sistema |
-| `--no-autostart` | No configura el arranque automático |
-| `--daemon-only` | Solo el daemon, sin interfaz gráfica |
+### Headless machines
 
-### Uso sin entorno gráfico
-
-El proyecto se divide en un daemon que maneja el dispositivo y una interfaz
-gráfica opcional para configurarlo. El daemon no depende de Tauri, GTK ni
-webkit, así que funciona en un equipo sin escritorio, por SSH o en un servidor:
+The project splits into a daemon that drives the device and an optional GUI to
+configure it. The daemon links neither Tauri, GTK nor WebKit, so it runs on a
+machine with no desktop, over SSH, or on a server:
 
 ```bash
 ./install.sh --daemon-only
 ```
 
-Ambos comparten el mismo `config.json`, de modo que podés configurar los botones
-con la aplicación en un equipo y después dejar corriendo solo el daemon. No
-pueden usar el dispositivo a la vez: los units de systemd lo declaran con
-`Conflicts=`.
+Both share the same `config.json`, so you can configure the keys with the GUI on
+one machine and then run only the daemon. They cannot hold the device at the
+same time — the systemd units declare `Conflicts=`:
 
 ```bash
-systemctl --user disable --now redragon-streamdeck   # apagar la interfaz
-systemctl --user enable  --now redragon-daemon       # usar solo el daemon
+systemctl --user disable --now redragon-streamdeck   # stop the GUI
+systemctl --user enable  --now redragon-daemon       # run the daemon alone
 ```
 
-## Uso
+---
 
-### Ejecutar la aplicación
+## Usage
+
+### Running it
 
 ```bash
 redragon-streamdeck
 ```
 
-O busca "Redragon Stream Deck" en el menú de aplicaciones.
+Or look for "Redragon Stream Deck" in your application menu.
 
-Cerrar la ventana **no** cierra la aplicación: se oculta en la bandeja y el
-Stream Deck sigue funcionando. Para volver a abrirla, o para salir de verdad,
-usá el menú del icono de la bandeja. Hace falta porque el hilo que atiende los
-botones vive en el proceso de la interfaz.
+Closing the window does **not** quit: it hides in the tray and the Stream Deck
+keeps working. Use the tray icon's menu to bring it back or to really quit. It
+works this way because the thread servicing the keys lives in the GUI process.
 
-### Auto-inicio
+### Autostart
 
-Para iniciar la app automáticamente al iniciar sesión:
-
-```bash
-./install.sh --enable-autostart
-```
-
-Comandos útiles:
+Autostart is configured by the installer and managed with systemd user units:
 
 ```bash
-./install.sh --autostart-status
-./install.sh --disable-autostart
+systemctl --user status  redragon-streamdeck    # is it enabled and running
+systemctl --user enable  --now redragon-streamdeck
+systemctl --user disable --now redragon-streamdeck
 ```
 
-### Configurar un botón
+### Configuring a key
 
-1. Haz clic en cualquier botón en la interfaz
-2. Configura:
-   - **Etiqueta**: Texto que se muestra
-   - **Comando**: Acción a ejecutar
-   - **Color**: Color de fondo
-   - **Icono**: Imagen personalizada
+1. Click any key in the interface
+2. Set:
+   - **Label**: the text shown on the key
+   - **Command**: what it runs
+   - **Colour**: background colour
+   - **Icon**: a custom image
 
-### Comandos Especiales
+---
 
-| Categoría | Comando | Descripción |
-|-----------|---------|-------------|
-| **Navegación** | `__NEXT_PAGE__` | Página siguiente |
-| | `__PREV_PAGE__` | Página anterior |
-| | `__PAGE_0__` | Ir a página específica |
-| **URLs** | `__URL_https://youtube.com` | Abrir URL |
-| **Texto** | `__TYPE_Hola mundo` | Escribir texto |
-| **Hotkeys** | `__KEY_ctrl+shift+s` | Simular teclas |
-| **Multi** | `__MULTI_cmd1;;cmd2` | Secuencia de comandos |
-| **Widgets** | `__CLOCK__` | Reloj HH:MM |
-| | `__CPU__` | Uso de CPU |
-| | `__RAM__` | Uso de RAM |
-| | `__TIMER_5__` | Timer 5 minutos |
+## Button commands
+
+| Category | Command | Description |
+|---|---|---|
+| **Navigation** | `__NEXT_PAGE__` | Next page |
+| | `__PREV_PAGE__` | Previous page |
+| | `__PAGE_0__` | Jump to a specific page |
+| **URLs** | `__URL_https://youtube.com` | Open a URL |
+| **Text** | `__TYPE_Hello world` | Type text |
+| **Hotkeys** | `__KEY_ctrl+shift+s` | Send a key combination |
+| **Multi** | `__MULTI_cmd1;;cmd2` | Run a sequence |
+| **Widgets** | `__CLOCK__` | Clock, HH:MM |
+| | `__CPU__` | CPU usage |
+| | `__RAM__` | RAM usage |
+| | `__TIMER_5__` | 5 minute timer |
 | **OBS** | `__OBS_STREAM__` | Toggle streaming |
-| | `__OBS_RECORD__` | Toggle grabación |
-| | `__OBS_SCENE_Gaming` | Cambiar escena |
-| **Twitch** | `__TWITCH_VIEWERS__` | Mostrar viewers |
-| | `__TWITCH_CLIP__` | Crear clip |
+| | `__OBS_RECORD__` | Toggle recording |
+| | `__OBS_SCENE_Gaming` | Switch scene |
+| **Twitch** | `__TWITCH_VIEWERS__` | Show viewer count |
+| | `__TWITCH_CLIP__` | Create a clip |
 
-Ver [CLAUDE.md](CLAUDE.md) para la lista completa de comandos.
+See [CLAUDE.md](CLAUDE.md) for the complete list.
 
-## Configurar Integraciones
+---
+
+## Integrations
 
 ### OBS Studio
 
-1. En OBS: **Tools > WebSocket Server Settings**
-2. Habilitar "Enable WebSocket server"
-3. (Opcional) Configurar password
+1. In OBS: **Tools → WebSocket Server Settings**
+2. Enable "Enable WebSocket server"
+3. Optionally set a password
 
 ```bash
-# Ejecutar con password de OBS
-OBS_WEBSOCKET_PASSWORD="tu_password" redragon-streamdeck
+OBS_WEBSOCKET_PASSWORD="your_password" redragon-streamdeck
 ```
 
 ### Twitch
 
-1. Crear app en https://dev.twitch.tv/console
-2. Configurar variables de entorno:
+1. Create an application at https://dev.twitch.tv/console
+2. Export the credentials:
 
 ```bash
-export TWITCH_CLIENT_ID="tu_client_id"
-export TWITCH_ACCESS_TOKEN="tu_token"
-export TWITCH_CHANNEL="tu_canal"
+export TWITCH_CLIENT_ID="your_client_id"
+export TWITCH_ACCESS_TOKEN="your_token"
+export TWITCH_CHANNEL="your_channel"
 ```
 
-## Distribución de Botones
+---
+
+## Button layout
 
 ```
 ┌────┬────┬────┬────┬────┐
-│ 11 │ 12 │ 13 │ 14 │ 15 │  ← Fila superior
+│ 11 │ 12 │ 13 │ 14 │ 15 │  ← top row
 ├────┼────┼────┼────┼────┤
-│  6 │  7 │  8 │  9 │ 10 │  ← Fila media
+│  6 │  7 │  8 │  9 │ 10 │  ← middle row
 ├────┼────┼────┼────┼────┤
-│  1 │  2 │  3 │  4 │  5 │  ← Fila inferior
+│  1 │  2 │  3 │  4 │  5 │  ← bottom row
 └────┴────┴────┴────┴────┘
 ```
 
-## Estructura del Proyecto
+---
 
-Es un workspace de cargo con tres crates. La separación existe para que el
-dispositivo se pueda manejar sin entorno gráfico: el daemon no enlaza webkit ni
-GTK.
+## Project structure
+
+A cargo workspace with three crates. The split exists so the device can be
+driven without a graphical environment: the daemon links neither WebKit nor GTK.
 
 ```
 redragon-streamdeck-linux/
 ├── crates/
-│   ├── core/            # redragon-core: USB, widgets, OBS, Twitch. Sin Tauri
-│   └── daemon/          # redragon-daemon: ejecutable sin interfaz
+│   ├── core/            # redragon-core: USB, widgets, OBS, Twitch. No Tauri
+│   └── daemon/          # redragon-daemon: headless executable
 ├── src-tauri/
-│   └── src/lib.rs       # La interfaz: comandos de Tauri y arranque
+│   └── src/lib.rs       # the GUI: Tauri commands and startup
 ├── public/
-│   ├── index.html       # Interfaz de escritorio (Tauri)
-│   ├── app-tauri.js     #   lógica y puente con el backend
-│   ├── ui-shell.js      #   presentación: biblioteca de acciones, paneles
-│   ├── style.css        #   estilos
-│   ├── index-web.html   # Interfaz del servidor Node (ver abajo)
-│   ├── app.js           #   su cliente HTTP
-│   └── style-web.css    #   sus estilos
-├── src/server.ts        # Servidor Express opcional, alternativa a Tauri
-├── install.sh           # Instalador (detecta la distribución)
-├── uninstall.sh         # Desinstalador
-├── redragon-streamdeck.service  # Unidad systemd de la interfaz
-├── redragon-daemon.service      # Unidad systemd del daemon
-└── CLAUDE.md            # Notas técnicas y de mantenimiento
+│   ├── index.html       # desktop interface (Tauri)
+│   ├── app-tauri.js     #   logic and bridge to the backend
+│   ├── ui-shell.js      #   presentation: action library, panels
+│   ├── style.css        #   styles
+│   ├── index-web.html   # Node server interface (see below)
+│   ├── app.js           #   its HTTP client
+│   └── style-web.css    #   its styles
+├── src/server.ts        # optional Express server, alternative to Tauri
+├── install.sh           # installer (detects the distribution)
+├── uninstall.sh         # uninstaller
+├── redragon-streamdeck.service  # systemd unit for the GUI
+├── redragon-daemon.service      # systemd unit for the daemon
+└── CLAUDE.md            # technical and maintenance notes
 ```
 
-**Hay dos interfaces y las dos funcionan.** La de Tauri es la que instala
-`install.sh` y la que se usa normalmente. La otra es un cliente web servido por
-`src/server.ts` (Express, con sus propias dependencias `usb` y `jimp`), que se
-levanta con `npm start`. Cada una tiene su hoja de estilos, así que se pueden
-modificar por separado.
+**There are two interfaces and both work.** The Tauri one is what `install.sh`
+sets up and what you normally use. The other is a web client served by
+`src/server.ts` (Express, with its own `usb` and `jimp` dependencies), started
+with `npm start`. Each has its own stylesheet, so they can be changed
+independently.
 
-El binario compilado queda en **`target/release/`**, en la raíz del workspace,
-no dentro de `src-tauri/`.
+The compiled binary lands in **`target/release/`** at the workspace root, not
+inside `src-tauri/`.
 
-## Actualizaciones
+---
 
-La aplicación avisa sola cuando hay una versión nueva. En **Ajustes → Acerca de**
-se ve la versión instalada, la revisión y si estás al día; la versión también
-queda a la vista en la barra de título.
+## Updates
 
-Cuando hay una disponible, el botón de instalar descarga la versión publicada,
-la compila y reemplaza el binario en marcha, dejando una copia `.bak` de la
-anterior. Si la aplicación corre como servicio de usuario, se encarga de pararlo
-y volver a arrancarlo.
+The application tells you when a new version exists. **Settings → About** shows
+the installed version, the revision and whether you are up to date; the version
+is also visible in the title bar.
 
-Del lado del repositorio, los releases se publican solos: al mergear a `main`,
-si las builds de las cuatro distribuciones pasan, se etiqueta y se publica una
-versión nueva. El número sale de los prefijos de los commits — `feat` sube la
-minor, `fix` la patch — y los cambios que sólo tocan documentación o CI no
-generan versión.
+When an update is available, the install button downloads the published version,
+builds it and replaces the running binary, keeping a `.bak` copy of the previous
+one. If the app is running as a user service, it stops and restarts it for you.
 
-## Solución de Problemas
+On the repository side, releases publish themselves: merging to `main` tags and
+publishes a new version if the builds for all four distributions pass. The
+number comes from the commit prefixes — `feat` bumps the minor, `fix` the patch
+— and changes that only touch documentation or CI produce no release.
 
-### El Stream Deck no se detecta
+---
+
+## Troubleshooting
+
+### The Stream Deck is not detected
 
 ```bash
-# Verificar conexión
+# Is the device there at all
 lsusb | grep "0200:1000"
 
-# Verificar reglas udev
-cat /etc/udev/rules.d/99-redragon-streamdeck.rules
+# Is the udev rule installed
+cat /etc/udev/rules.d/60-redragon-streamdeck.rules
 
-# Desconectar y reconectar el dispositivo
+# Then unplug and replug the device
 ```
 
-### Los hotkeys no funcionan
+The rule only applies to devices connected after it was loaded, which is why
+replugging matters.
+
+### Keyboard actions do nothing
 
 ```bash
-# Verificar ydotoold
+# Is the daemon running
 systemctl status ydotoold.service
 
-# Verificar grupo input
+# Are you in the input group
 groups | grep input
 
-# Verificar que el socket sea accesible por el grupo input
-stat -c '%a %U:%G %n' /tmp/.ydotool_socket
+# Can the group reach the socket
+stat -c '%a %U:%G %n' /run/ydotoold/socket
+```
 
-# Si no estás en el grupo, agrégarte y reiniciar sesión
+The socket should look like this:
+
+```text
+660 root:input /run/ydotoold/socket
+```
+
+If you are not in the `input` group, add yourself and start a new session:
+
+```bash
 sudo usermod -aG input $USER
 ```
 
-El socket de `ydotoold` debe verse así:
-
-```text
-660 root:input /tmp/.ydotool_socket
-```
-
-Si aparece como `root:root`, reinstala o reinicia el servicio generado por `install.sh`:
+If the socket shows as `root:root`, reinstall or restart the unit that
+`install.sh` generated:
 
 ```bash
-sudo cp ydotoold.service /etc/systemd/system/ydotoold.service
 sudo systemctl daemon-reload
 sudo systemctl restart ydotoold.service
 ```
 
-También puedes probar el acceso directamente:
+You can also test access directly:
 
 ```bash
-YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool type ""
-YDOTOOL_SOCKET=/tmp/.ydotool_socket ydotool key 29:1 29:0
+YDOTOOL_SOCKET=/run/ydotoold/socket ydotool type ""
+YDOTOOL_SOCKET=/run/ydotoold/socket ydotool key 29:1 29:0
 ```
 
-### Error "Interface Busy"
+### "Interface Busy"
 
-Significa que otro proceso ya tiene el dispositivo tomado: `claim_interface` es
-exclusivo, así que sólo uno puede manejarlo a la vez. Lo habitual es que hayan
-quedado dos instancias, o que estén corriendo la interfaz y el daemon juntos.
+Another process already holds the device. `claim_interface` is exclusive, so
+only one can drive it at a time. Usually this means two instances are running,
+or the GUI and the daemon are both up.
 
 ```bash
-# Ver si el servicio ya lo está manejando
+# Is the service already handling it
 systemctl --user status redragon-streamdeck
 
-# Reiniciarlo, que es lo que corresponde si está gestionado por systemd
+# Restarting is the right move when systemd manages it
 systemctl --user restart redragon-streamdeck
 ```
 
-Si quedaron procesos sueltos, fuera de systemd:
+For stray processes outside systemd:
 
 ```bash
 pkill -x redragon-stream
 ```
 
-> **No uses `pkill -f`** con la ruta del binario: el patrón aparece en la línea
-> de comandos del propio shell y termina matando cosas que no querías. El `-x`
-> compara contra el nombre del proceso, que el kernel trunca a 15 caracteres —
-> de ahí que el patrón vaya cortado.
+> **Do not use `pkill -f`** with the binary's path: the pattern appears in the
+> command line of your own shell and you end up killing things you did not mean
+> to. `-x` matches against the process name, which the kernel truncates to 15
+> characters — hence the shortened pattern.
 
-## Desinstalar
+---
+
+## Uninstall
 
 ```bash
 ./uninstall.sh
 ```
 
-## Dispositivos Compatibles
+---
 
-- Redragon SS-550 (USB ID: 0200:1000)
-- Posiblemente otros dispositivos basados en StreamDock/Mirabox
+## Supported devices
 
-## Contribuir
-
-¡Las contribuciones son bienvenidas!
-
-1. Fork el repositorio
-2. Crea una rama: `git checkout -b mi-feature`
-3. Haz commit: `git commit -m 'Agregar feature'`
-4. Push: `git push origin mi-feature`
-5. Abre un Pull Request
-
-## Créditos
-
-- **Tecnodespegue** - Desarrollo y mantenimiento
-- Basado en el protocolo de [mirabox-streamdock-node](https://github.com/nicross/mirabox-streamdock-node)
-- Desarrollado con ayuda de Claude AI
-
-## Licencia
-
-Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
+- Redragon SS-550 (USB ID `0200:1000`)
+- Possibly other StreamDock/Mirabox-based devices
 
 ---
 
-⭐ Si este proyecto te fue útil, ¡dale una estrella en GitHub!
+## Contributing
+
+Contributions are welcome.
+
+1. Fork the repository
+2. Create a branch: `git checkout -b my-feature`
+3. Commit: `git commit -m 'Add my feature'`
+4. Push: `git push origin my-feature`
+5. Open a pull request
+
+Adding a distribution to the installer is a single entry in `packages_for()`.
+
+---
+
+## Credits
+
+- **Tecnodespegue** — development and maintenance
+- Protocol based on [mirabox-streamdock-node](https://github.com/nicross/mirabox-streamdock-node)
+- Developed with the help of Claude AI
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
+
+⭐ If this project was useful to you, a star on GitHub helps other people find it.
