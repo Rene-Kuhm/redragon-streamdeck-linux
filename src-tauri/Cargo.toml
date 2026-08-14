@@ -2,9 +2,9 @@
 name = "redragon-streamdeck"
 version = "2.0.0"
 description = "Redragon Stream Deck Manager - Desktop App"
-authors = ["Tecnodespegue"]
+authors = ["René Kuhm <renekuhm2@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/Rene-Kuhm/redragon-streamdeck-linux-"
+repository = "https://github.com/Rene-Kuhm/redragon-streamdeck-linux"
 edition = "2021"
 
 [lib]
@@ -34,10 +34,3 @@ dirs = "5"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-
-[profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true

@@ -6,3 +6,13 @@ members = ["crates/core", "crates/daemon", "src-tauri"]
 # daemon y la GUI compilen versiones distintas de rusb o image.
 [workspace.package]
 edition = "2021"
+
+# Cargo solo lee los perfiles del raiz del workspace: los que habia en
+# src-tauri/Cargo.toml se ignoraban en silencio, asi que las releases salian
+# sin lto, sin strip y con el opt-level por defecto.
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
