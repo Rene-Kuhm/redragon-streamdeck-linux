@@ -4,6 +4,8 @@
 
 Driver y panel de control open source para el **Redragon SS-550 Stream Deck** en Linux.
 
+![El Redragon SS-550: 15 teclas LCD retroiluminadas en una grilla de 5x3 sobre un soporte inclinable](docs/screenshots/dispositivo.png)
+
 **Funciona en cualquier distribución.** No está atado a ninguna: se compila desde
 el código y habla con el dispositivo por USB, así que corre igual en Fedora,
 Debian, Arch, openSUSE, Gentoo, Void o NixOS. Lo único que cambia es cuánto
