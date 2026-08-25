@@ -90,6 +90,7 @@ detect_distro() {
             debian|ubuntu)       DISTRO_FAMILY="debian" ;;
             arch|archlinux)      DISTRO_FAMILY="arch" ;;
             opensuse*|suse|sles) DISTRO_FAMILY="suse" ;;
+            nixos)               DISTRO_FAMILY="nixos" ;;
             *)                   continue ;;
         esac
         break
@@ -104,6 +105,7 @@ detect_distro() {
         debian) PKG_INSTALL="apt-get install -y --no-install-recommends" ;;
         arch)   PKG_INSTALL="pacman -S --needed --noconfirm" ;;
         suse)   PKG_INSTALL="zypper install -y" ;;
+        nixos)  PKG_INSTALL="nix-env -iA" ;;  # Not used — NixOS is declarative
     esac
 
     ok "Detectado ${PRETTY_NAME:-$ID} (familia: $DISTRO_FAMILY)"
@@ -138,6 +140,13 @@ packages_for() {
                   librsvg-devel libayatana-appindicator3-devel
                   dejavu-fonts ydotool playerctl"
             ;;
+        nixos)
+            # NixOS es declarativo: las dependencias se instalan via
+            # configuration.nix, no via nix-env. Esta lista es solo
+            # informativa — install.sh la imprime y sugiere NIXOS.md.
+            echo "gtk3 webkitgtk_4_1 librsvg libappindicator-gtk3
+                  libusb1 openssl pkg-config gcc ydotool playerctl"
+            ;;
     esac
 }
 
@@ -157,6 +166,14 @@ need_root() {
 install_dependencies() {
     if [ "$SKIP_DEPS" -eq 1 ]; then
         warn "--skip-deps: no se instalan dependencias del sistema"
+        return
+    fi
+
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        step "NixOS detectado: las dependencias se instalan via configuration.nix"
+        warn "Agrega paquetes a environment.systemPackages en /etc/nixos/configuration.nix"
+        warn "Usa shell.nix del repo para el entorno de compilacion"
+        warn "Ver NIXOS.md para instrucciones completas"
         return
     fi
 
@@ -183,6 +200,23 @@ install_dependencies() {
 
 setup_udev() {
     step "Instalando la regla udev del dispositivo"
+
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        local nixos_rules="$SCRIPT_DIR/nixos-udev-rules.nix"
+        cat > "$nixos_rules" <<NUREOF
+# Agregar a services.udev.extraRules en /etc/nixos/configuration.nix:
+#
+#   services.udev.extraRules = ''
+#     # Redragon SS-550 Stream Deck (VID 0200 PID 1000)
+#     SUBSYSTEM=="usb", ATTR{idVendor}=="0200", ATTR{idProduct}=="1000", GROUP="plugdev", MODE="0660"
+#     SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0200", ATTRS{idProduct}=="1000", GROUP="plugdev", MODE="0660"
+#   '';
+NUREOF
+        ok "Regla udev generada en $nixos_rules"
+        warn "Copia las reglas a services.udev.extraRules en configuration.nix"
+        warn "Despues ejecuta: sudo nixos-rebuild switch"
+        return
+    fi
 
     # TAG+="uaccess" le da acceso al usuario de la sesion local activa, que es
     # exactamente lo que hace falta. No se usa MODE="0666": eso dejaria el
@@ -219,6 +253,35 @@ setup_ydotool() {
 
     if ! command -v ydotoold >/dev/null; then
         warn "ydotoold no esta instalado; las acciones de teclado no van a andar"
+        return
+    fi
+
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        local nixos_service="$SCRIPT_DIR/nixos-ydotoold.nix"
+        cat > "$nixos_service" <<NIXEOF
+# Agregar a systemd.services en /etc/nixos/configuration.nix:
+#
+#   systemd.services.ydotoold = {
+#     description = "ydotoold - ydotool daemon";
+#     wantedBy    = [ "multi-user.target" ];
+#     after       = [ "systemd-udevd.service" ];
+#     serviceConfig = {
+#       Type              = "simple";
+#       RuntimeDirectory  = "ydotoold";
+#       RuntimeDirectoryMode = "0755";
+#       ExecStart         = "\${pkgs.ydotool}/bin/ydotoold --socket-path=/run/ydotoold/socket --socket-perm=0660";
+#       Restart           = "on-failure";
+#       RestartSec        = "2s";
+#     };
+#   };
+#
+# Agregar "input" a extraGroups del usuario en users.users.<name>.extraGroups.
+#
+# Crear ~/.config/environment.d/60-redragon-ydotool.conf:
+#   YDOTOOL_SOCKET=/run/ydotoold/socket
+NIXEOF
+        ok "Configuracion ydotoold generada en $nixos_service"
+        warn "Copia las lineas a configuration.nix y ejecuta sudo nixos-rebuild switch"
         return
     fi
 
@@ -268,6 +331,13 @@ check_rust() {
         return
     fi
 
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        step "Rust no encontrado"
+        warn "En NixOS, instala Rust via: nix-env -iA nixpkgs.rustup"
+        warn "O usa: nix-shell --run 'cargo build --release --workspace'"
+        fail "Rust no encontrado; instala rustup y vuelve a correr"
+    fi
+
     step "Instalando Rust"
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --default-toolchain stable --profile minimal
@@ -279,13 +349,21 @@ check_rust() {
 build_app() {
     if [ "$DAEMON_ONLY" -eq 1 ]; then
         step "Compilando el daemon"
-        ( cd "$SCRIPT_DIR" && cargo build --release -p redragon-daemon )
+        if [ "$DISTRO_FAMILY" = "nixos" ]; then
+            nix-shell --run "cargo build --release -p redragon-daemon" 2>&1
+        else
+            ( cd "$SCRIPT_DIR" && cargo build --release -p redragon-daemon )
+        fi
         ok "Compilado"
         return
     fi
 
     step "Compilando (tarda unos minutos)"
-    ( cd "$SCRIPT_DIR" && cargo build --release --workspace )
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        nix-shell --run "cargo build --release --workspace" 2>&1
+    else
+        ( cd "$SCRIPT_DIR" && cargo build --release --workspace )
+    fi
     ok "Compilado"
 }
 
@@ -332,6 +410,35 @@ setup_autostart() {
     fi
 
     step "Configurando arranque automatico"
+
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        local nixos_service="$SCRIPT_DIR/nixos-daemon.nix"
+        cat > "$nixos_service" <<NIXEOF
+# Agregar a systemd.services en /etc/nixos/configuration.nix:
+#
+# Nota: En NixOS el daemon corre como system service (root) porque
+# libusb necesita detachear el kernel driver usbhid.
+#
+#   systemd.services.redragon-daemon = {
+#     description = "Redragon Stream Deck daemon";
+#     wantedBy    = [ "multi-user.target" ];
+#     after       = [ "systemd-udevd.service" ];
+#     requires    = [ "systemd-udevd.service" ];
+#     serviceConfig = {
+#       Type      = "simple";
+#       ExecStart = "/usr/local/bin/redragon-daemon --config-dir /home/YOUR_USER/.local/share/com.tecnodespegue.redragon-streamdeck";
+#       Restart   = "on-failure";
+#       RestartSec = "5s";
+#       Environment = [ "YDOTOOL_SOCKET=/run/ydotoold/socket" ];
+#     };
+#   };
+NIXEOF
+        ok "Servicio daemon generado en $nixos_service"
+        warn "Copia las lineas a configuration.nix (reemplaza YOUR_USER)"
+        warn "Despues ejecuta: sudo nixos-rebuild switch"
+        return
+    fi
+
     mkdir -p "$HOME/.config/systemd/user"
 
     # Los dos units se instalan, pero solo se habilita uno: el dispositivo no
@@ -355,6 +462,26 @@ setup_autostart() {
 
 show_summary() {
     printf '\n%sRedragon Stream Deck listo.%s\n\n' "$C_GREEN$C_BOLD" "$C_RESET"
+
+    if [ "$DISTRO_FAMILY" = "nixos" ]; then
+        cat <<EOF
+  NixOS: revisa los archivos generados en el directorio del repo:
+    nixos-udev-rules.nix   — reglas udev para configuration.nix
+    nixos-ydotoold.nix     — servicio ydotoold para configuration.nix
+    nixos-daemon.nix       — servicio daemon para configuration.nix
+    shell.nix              — entorno de compilacion
+
+  Copia las lineas a /etc/nixos/configuration.nix y ejecuta:
+    sudo nixos-rebuild switch
+
+  Ejecutar:     $BIN_NAME
+  Diagnostico:  REDRAGON_STREAMDECK_DEBUG=1 $BIN_NAME
+
+  Si es la primera instalacion, desconecta y volve a conectar el dispositivo.
+EOF
+        return
+    fi
+
     cat <<EOF
   Ejecutar:     $BIN_NAME
   Iniciar:      systemctl --user start $BIN_NAME

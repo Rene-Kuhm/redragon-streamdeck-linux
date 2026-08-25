@@ -186,7 +186,8 @@ applies to it.
 |---|---|
 | Fedora/RHEL, Debian/Ubuntu, Arch, openSUSE | Nothing: `./install.sh` |
 | Derivatives (Mint, Pop!_OS, CachyOS, EndeavourOS, Nobara…) | Nothing: recognised through `ID_LIKE` |
-| Anything else (Gentoo, Void, NixOS, Slackware…) | Install the dependencies yourself, then `./install.sh --skip-deps` |
+| NixOS | `./install.sh --skip-deps` then follow [NIXOS.md](NIXOS.md) |
+| Anything else (Gentoo, Void, Slackware…) | Install the dependencies yourself, then `./install.sh --skip-deps` |
 
 openSUSE is not covered by CI: package names drift between Leap and Tumbleweed.
 If one of them fails to resolve, install by hand and use `--skip-deps`.
@@ -214,7 +215,15 @@ of the dependency table above with your own package manager, then:
 ```
 
 Adding proper support for a distribution is one entry in the `packages_for()`
-function in `install.sh` — pull requests welcome.
+function in `install.sh` — pull requests welcome. NixOS is already supported;
+see [NIXOS.md](NIXOS.md).
+
+### NixOS
+
+NixOS uses declarative configuration, so `install.sh --skip-deps` builds the
+project and generates config snippets but does not modify your system. See
+[NIXOS.md](NIXOS.md) for the full walkthrough: packages, udev rules,
+ydotoold, and the daemon service.
 
 ### Systems without systemd
 
@@ -376,6 +385,8 @@ redragon-streamdeck-linux/
 ├── src/server.ts        # optional Express server, alternative to Tauri
 ├── install.sh           # installer (detects the distribution)
 ├── uninstall.sh         # uninstaller
+├── shell.nix            # NixOS dev shell (nix-shell for build)
+├── NIXOS.md             # NixOS installation guide
 ├── redragon-streamdeck.service  # systemd unit for the GUI
 ├── redragon-daemon.service      # systemd unit for the daemon
 └── CLAUDE.md            # technical and maintenance notes
